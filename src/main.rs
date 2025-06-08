@@ -1,7 +1,7 @@
 use std::thread;
 
 use iced::border::Radius;
-use iced::widget::{container, row, svg, text};
+use iced::widget::{Svg, container, row, svg, text};
 use iced::{Alignment, Border, Color, Element, Event, Length, Task as Command, Theme};
 use iced_layershell::Application;
 use iced_layershell::reexport::{Anchor, KeyboardInteractivity};
@@ -14,6 +14,9 @@ use hyprland::prelude::*;
 use crate::hyprland_listener::hyprland_subscription;
 
 mod hyprland_listener;
+mod icons;
+
+use icons::Icons;
 
 #[tokio::main]
 pub async fn main() -> () {
@@ -125,18 +128,23 @@ impl Application for Limbo {
     }
 
     fn view(&self) -> Element<Message> {
-        let section = container(svg("assets/icons/nix-snowflake-white.svg").width(Length::Shrink))
-            .style(|_| container::Style {
-                background: Some(iced::Background::Color(Color::parse("#2c2c3f").unwrap())),
-                border: Border {
-                    radius: 6.into(),
-                    ..Default::default()
-                },
+        let section = container(
+            svg(svg::Handle::from_memory(
+                Icons::get("nix-snowflake-white.svg").unwrap().data,
+            ))
+            .width(Length::Shrink),
+        )
+        .style(|_| container::Style {
+            background: Some(iced::Background::Color(Color::parse("#2c2c3f").unwrap())),
+            border: Border {
+                radius: 6.into(),
                 ..Default::default()
-            })
-            .padding([6, 12])
-            .align_y(Alignment::Center)
-            .height(Length::Fill);
+            },
+            ..Default::default()
+        })
+        .padding([6, 12])
+        .align_y(Alignment::Center)
+        .height(Length::Fill);
 
         row![section]
             .padding([4, 8])
