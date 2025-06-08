@@ -1,7 +1,7 @@
 use std::thread;
 
 use iced::border::Radius;
-use iced::widget::{Svg, container, row, svg, text};
+use iced::widget::{Space, Svg, container, row, svg, text};
 use iced::{Alignment, Border, Color, Element, Event, Length, Task as Command, Theme};
 use iced_layershell::Application;
 use iced_layershell::reexport::{Anchor, KeyboardInteractivity};
@@ -11,7 +11,7 @@ use iced_layershell::to_layer_message;
 use hyprland::data::{Monitors, Workspace, Workspaces};
 use hyprland::prelude::*;
 
-use crate::components::{icon, section};
+use crate::components::{icon, section, side};
 use crate::hyprland_listener::hyprland_subscription;
 
 mod components;
@@ -131,11 +131,29 @@ impl Application for Limbo {
 
     fn view(&self) -> Element<Message> {
         row![
-            section(icon("nix-snowflake-white", None)),
-            section(icon("nix-snowflake-white", None))
+            // Left
+            side(
+                Alignment::Start,
+                row![
+                    section(icon("nix-snowflake-white", None)),
+                    section(icon("nix-snowflake-white", None)),
+                    section(icon("nix-snowflake-white", None)),
+                    section(icon("nix-snowflake-white", None))
+                ]
+                .spacing(12)
+            ),
+            // Center
+            side(
+                Alignment::Center,
+                row![section(icon("nix-snowflake-white", None))].spacing(12)
+            ),
+            // Right
+            side(
+                Alignment::End,
+                row![section(icon("nix-snowflake-white", None))].spacing(12)
+            ),
         ]
         .padding([4, 8])
-        .spacing(12)
         .width(Length::Fill)
         .height(Length::Fill)
         .into()

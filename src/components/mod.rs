@@ -10,6 +10,13 @@ use crate::icons::{Icons, IconsFilled};
 
 mod section;
 
+pub fn side<'a, Message>(
+    alignment: Alignment,
+    content: impl Into<iced::Element<'a, Message>>,
+) -> Container<'a, Message> {
+    container(content).width(Length::Fill).align_x(alignment)
+}
+
 pub fn section<'a, Message>(
     content: impl Into<iced::Element<'a, Message>>,
 ) -> Container<'a, Message> {
