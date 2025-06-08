@@ -1,9 +1,16 @@
-use iced::widget::{button, column, row, text, text_input};
-use iced::{Alignment, Color, Element, Event, Length, Task as Command, Theme, event};
+use iced::widget::{container, row, text};
+use iced::{Alignment, Color, Element, Event, Length, Task as Command, Theme};
 use iced_layershell::Application;
-use iced_layershell::reexport::Anchor;
+use iced_layershell::reexport::{Anchor, KeyboardInteractivity};
 use iced_layershell::settings::{LayerShellSettings, Settings, StartMode};
 use iced_layershell::to_layer_message;
+
+use hyprland::data::Workspace;
+use hyprland::prelude::*;
+
+use crate::hyprland_listener::hyprland_subscription;
+
+mod hyprland_listener;
 
 pub fn main() -> Result<(), iced_layershell::Error> {
     // Workaround for https://github.com/friedow/centerpiece/issues/237
@@ -21,11 +28,12 @@ pub fn main() -> Result<(), iced_layershell::Error> {
         None => StartMode::Active,
     };
 
-    Counter::run(Settings {
+    Limbo::run(Settings {
         layer_settings: LayerShellSettings {
             size: Some((0, 40)),
             exclusive_zone: 40,
             anchor: Anchor::Top | Anchor::Left | Anchor::Right,
+            keyboard_interactivity: KeyboardInteractivity::None,
             start_mode,
             ..Default::default()
         },
@@ -33,45 +41,36 @@ pub fn main() -> Result<(), iced_layershell::Error> {
     })
 }
 
-struct Counter {
-    value: i32,
-    text: String,
-}
+struct Limbo {}
 
 // Because new iced delete the custom command, so now we make a macro crate to generate
 // the Command
 #[to_layer_message]
 #[derive(Debug, Clone)]
 #[doc = "Some docs"]
-enum Message {
-    IncrementPressed,
-    DecrementPressed,
-    TextInput(String),
+pub enum Message {
+    WorkspaceChanged(i32),
+    WorkspaceCreated(i32),
+    WorkspaceDestroyed(i32),
     IcedEvent(Event),
 }
 
-impl Application for Counter {
+impl Application for Limbo {
     type Message = Message;
     type Flags = ();
     type Theme = Theme;
     type Executor = iced::executor::Default;
 
     fn new(_flags: ()) -> (Self, Command<Message>) {
-        (
-            Self {
-                value: 0,
-                text: "hello, write something here".to_string(),
-            },
-            Command::none(),
-        )
+        (Self {}, Command::none())
     }
 
     fn namespace(&self) -> String {
-        String::from("Counter - Iced")
+        "Limbo".to_string()
     }
 
     fn subscription(&self) -> iced::Subscription<Self::Message> {
-        event::listen().map(Message::IcedEvent)
+        hyprland_subscription()
     }
 
     fn update(&mut self, message: Message) -> Command<Message> {
@@ -80,16 +79,16 @@ impl Application for Counter {
                 println!("hello {event:?}");
                 Command::none()
             }
-            Message::IncrementPressed => {
-                self.value += 1;
+            Message::WorkspaceChanged(id) => {
+                println!("workspace changed to {id:?}");
                 Command::none()
             }
-            Message::DecrementPressed => {
-                self.value -= 1;
+            Message::WorkspaceCreated(id) => {
+                println!("workspace created: {id:?}");
                 Command::none()
             }
-            Message::TextInput(text) => {
-                self.text = text;
+            Message::WorkspaceDestroyed(id) => {
+                println!("workspace destroyed: {id:?}");
                 Command::none()
             }
             _ => unreachable!(),
@@ -97,35 +96,37 @@ impl Application for Counter {
     }
 
     fn view(&self) -> Element<Message> {
-        let center = column![
-            button("Increment").on_press(Message::IncrementPressed),
-            text(self.value).size(50),
-            button("Decrement").on_press(Message::DecrementPressed)
-        ]
-        .align_x(Alignment::Center)
-        .padding(20)
-        .width(Length::Fill)
-        .height(Length::Fill);
-        row![
-            column![
-                center,
-                text_input("hello", &self.text)
-                    .on_input(Message::TextInput)
-                    .padding(10),
-            ]
-            .width(Length::Fill),
-        ]
-        .padding(20)
-        .spacing(10)
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .into()
+        let section = container(text("Hello, world!"))
+            .style(|_| container::Style {
+                background: Some(iced::Background::Color(Color::parse("#2c2c3f").unwrap())),
+                ..Default::default()
+            })
+            .padding([0, 4])
+            .align_y(Alignment::Center)
+            .height(Length::Fill);
+        row![section]
+            .padding(4)
+            .spacing(10)
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .into()
+    }
+
+    fn theme(&self) -> Self::Theme {
+        Theme::CatppuccinMocha
     }
 
     fn style(&self, theme: &Self::Theme) -> iced_layershell::Appearance {
         use iced_layershell::Appearance;
+
+        let workspace = Workspace::get_active().unwrap();
+
         Appearance {
-            background_color: Color::TRANSPARENT,
+            background_color: if workspace.windows > 0 {
+                theme.palette().background
+            } else {
+                Color::TRANSPARENT
+            },
             text_color: theme.palette().text,
         }
     }
