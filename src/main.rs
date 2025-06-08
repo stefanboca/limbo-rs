@@ -23,9 +23,9 @@ pub fn main() -> Result<(), iced_layershell::Error> {
 
     Counter::run(Settings {
         layer_settings: LayerShellSettings {
-            size: Some((0, 400)),
-            exclusive_zone: 400,
-            anchor: Anchor::Bottom | Anchor::Left | Anchor::Right,
+            size: Some((0, 40)),
+            exclusive_zone: 40,
+            anchor: Anchor::Top | Anchor::Left | Anchor::Right,
             start_mode,
             ..Default::default()
         },
@@ -38,14 +38,6 @@ struct Counter {
     text: String,
 }
 
-#[derive(Debug, Clone, Copy)]
-enum WindowDirection {
-    Top,
-    Left,
-    Right,
-    Bottom,
-}
-
 // Because new iced delete the custom command, so now we make a macro crate to generate
 // the Command
 #[to_layer_message]
@@ -55,7 +47,6 @@ enum Message {
     IncrementPressed,
     DecrementPressed,
     TextInput(String),
-    Direction(WindowDirection),
     IcedEvent(Event),
 }
 
@@ -101,25 +92,6 @@ impl Application for Counter {
                 self.text = text;
                 Command::none()
             }
-
-            Message::Direction(direction) => match direction {
-                WindowDirection::Left => Command::done(Message::AnchorSizeChange(
-                    Anchor::Left | Anchor::Top | Anchor::Bottom,
-                    (400, 0),
-                )),
-                WindowDirection::Right => Command::done(Message::AnchorSizeChange(
-                    Anchor::Right | Anchor::Top | Anchor::Bottom,
-                    (400, 0),
-                )),
-                WindowDirection::Bottom => Command::done(Message::AnchorSizeChange(
-                    Anchor::Bottom | Anchor::Left | Anchor::Right,
-                    (0, 400),
-                )),
-                WindowDirection::Top => Command::done(Message::AnchorSizeChange(
-                    Anchor::Top | Anchor::Left | Anchor::Right,
-                    (0, 400),
-                )),
-            },
             _ => unreachable!(),
         }
     }
@@ -135,25 +107,13 @@ impl Application for Counter {
         .width(Length::Fill)
         .height(Length::Fill);
         row![
-            button("left")
-                .on_press(Message::Direction(WindowDirection::Left))
-                .height(Length::Fill),
             column![
-                button("top")
-                    .on_press(Message::Direction(WindowDirection::Top))
-                    .width(Length::Fill),
                 center,
                 text_input("hello", &self.text)
                     .on_input(Message::TextInput)
                     .padding(10),
-                button("bottom")
-                    .on_press(Message::Direction(WindowDirection::Bottom))
-                    .width(Length::Fill),
             ]
             .width(Length::Fill),
-            button("right")
-                .on_press(Message::Direction(WindowDirection::Right))
-                .height(Length::Fill),
         ]
         .padding(20)
         .spacing(10)
