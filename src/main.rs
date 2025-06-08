@@ -8,7 +8,7 @@ use iced_layershell::reexport::{Anchor, KeyboardInteractivity};
 use iced_layershell::settings::{LayerShellSettings, Settings, StartMode};
 use iced_layershell::to_layer_message;
 
-use hyprland::data::{Monitors, Workspace};
+use hyprland::data::{Monitors, Workspace, Workspaces};
 use hyprland::prelude::*;
 
 use crate::components::{icon, section};
@@ -148,7 +148,16 @@ impl Application for Limbo {
     fn style(&self, theme: &Self::Theme) -> iced_layershell::Appearance {
         use iced_layershell::Appearance;
 
-        let workspace = Workspace::get_active().unwrap();
+        let active_workspaces = Monitors::get()
+            .unwrap()
+            .iter()
+            .map(|m| m.active_workspace.id)
+            .collect::<Vec<_>>();
+        let workspaces = Workspaces::get().unwrap();
+        let workspace = workspaces
+            .iter()
+            .find(|w| w.monitor == self.monitor && active_workspaces.contains(&w.id))
+            .unwrap();
 
         Appearance {
             background_color: if workspace.windows > 0 {
