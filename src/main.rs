@@ -6,6 +6,15 @@ use iced_layershell::settings::{LayerShellSettings, Settings, StartMode};
 use iced_layershell::to_layer_message;
 
 pub fn main() -> Result<(), iced_layershell::Error> {
+    // Workaround for https://github.com/friedow/centerpiece/issues/237
+    // WGPU picks the lower power GPU by default, which on some systems,
+    // will pick an IGPU that doesn't exist leading to a black screen.
+    if std::env::var("WGPU_POWER_PREF").is_err() {
+        unsafe {
+            std::env::set_var("WGPU_POWER_PREF", "high");
+        }
+    }
+
     let binded_output_name = std::env::args().nth(1);
     let start_mode = match binded_output_name {
         Some(output) => StartMode::TargetScreen(output),
