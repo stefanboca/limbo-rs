@@ -11,8 +11,10 @@ use iced_layershell::to_layer_message;
 use hyprland::data::{Monitors, Workspace};
 use hyprland::prelude::*;
 
+use crate::components::{icon, section};
 use crate::hyprland_listener::hyprland_subscription;
 
+mod components;
 mod hyprland_listener;
 mod icons;
 
@@ -128,30 +130,15 @@ impl Application for Limbo {
     }
 
     fn view(&self) -> Element<Message> {
-        let section = container(
-            svg(svg::Handle::from_memory(
-                Icons::get("nix-snowflake-white.svg").unwrap().data,
-            ))
-            .width(Length::Shrink),
-        )
-        .style(|_| container::Style {
-            background: Some(iced::Background::Color(Color::parse("#2c2c3f").unwrap())),
-            border: Border {
-                radius: 6.into(),
-                ..Default::default()
-            },
-            ..Default::default()
-        })
-        .padding([6, 12])
-        .align_y(Alignment::Center)
-        .height(Length::Fill);
-
-        row![section]
-            .padding([4, 8])
-            .spacing(10)
-            .width(Length::Fill)
-            .height(Length::Fill)
-            .into()
+        row![
+            section(icon("nix-snowflake-white", None)),
+            section(icon("nix-snowflake-white", None))
+        ]
+        .padding([4, 8])
+        .spacing(12)
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .into()
     }
 
     fn theme(&self) -> Self::Theme {
