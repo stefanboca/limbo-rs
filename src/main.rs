@@ -1,3 +1,5 @@
+use std::thread;
+
 use iced::widget::{container, row, text};
 use iced::{Alignment, Color, Element, Event, Length, Task as Command, Theme};
 use iced_layershell::Application;
@@ -5,14 +7,15 @@ use iced_layershell::reexport::{Anchor, KeyboardInteractivity};
 use iced_layershell::settings::{LayerShellSettings, Settings, StartMode};
 use iced_layershell::to_layer_message;
 
-use hyprland::data::Workspace;
+use hyprland::data::{Monitors, Workspace};
 use hyprland::prelude::*;
 
 use crate::hyprland_listener::hyprland_subscription;
 
 mod hyprland_listener;
 
-pub fn main() -> Result<(), iced_layershell::Error> {
+#[tokio::main]
+pub async fn main() -> () {
     // Workaround for https://github.com/friedow/centerpiece/issues/237
     // WGPU picks the lower power GPU by default, which on some systems,
     // will pick an IGPU that doesn't exist leading to a black screen.
@@ -22,26 +25,45 @@ pub fn main() -> Result<(), iced_layershell::Error> {
         }
     }
 
-    let binded_output_name = std::env::args().nth(1);
-    let start_mode = match binded_output_name {
-        Some(output) => StartMode::TargetScreen(output),
-        None => StartMode::Active,
-    };
+    let monitors = Monitors::get().expect("failed to get hyprland monitors");
+    let monitors = monitors
+        .iter()
+        .map(|monitor| monitor.name.clone())
+        .collect::<Vec<_>>();
 
-    Limbo::run(Settings {
-        layer_settings: LayerShellSettings {
-            size: Some((0, 40)),
-            exclusive_zone: 40,
-            anchor: Anchor::Top | Anchor::Left | Anchor::Right,
-            keyboard_interactivity: KeyboardInteractivity::None,
-            start_mode,
-            ..Default::default()
-        },
-        ..Default::default()
-    })
+    let tasks = monitors
+        .into_iter()
+        .map(|monitor| {
+            thread::spawn(move || {
+                Limbo::run(Settings {
+                    layer_settings: LayerShellSettings {
+                        size: Some((0, 40)),
+                        exclusive_zone: 40,
+                        anchor: Anchor::Top | Anchor::Left | Anchor::Right,
+                        keyboard_interactivity: KeyboardInteractivity::None,
+                        start_mode: StartMode::TargetScreen(monitor.clone()),
+                        ..Default::default()
+                    },
+                    flags: Flags { monitor },
+                    ..Default::default()
+                })
+            })
+        })
+        .collect::<Vec<_>>();
+
+    for task in tasks {
+        task.join().unwrap().unwrap();
+    }
 }
 
-struct Limbo {}
+#[derive(Debug, Clone, Default)]
+struct Flags {
+    monitor: String,
+}
+
+struct Limbo {
+    monitor: String,
+}
 
 // Because new iced delete the custom command, so now we make a macro crate to generate
 // the Command
@@ -57,12 +79,17 @@ pub enum Message {
 
 impl Application for Limbo {
     type Message = Message;
-    type Flags = ();
+    type Flags = Flags;
     type Theme = Theme;
     type Executor = iced::executor::Default;
 
-    fn new(_flags: ()) -> (Self, Command<Message>) {
-        (Self {}, Command::none())
+    fn new(flags: Self::Flags) -> (Self, Command<Message>) {
+        (
+            Self {
+                monitor: flags.monitor,
+            },
+            Command::none(),
+        )
     }
 
     fn namespace(&self) -> String {
