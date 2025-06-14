@@ -46,6 +46,14 @@
         };
 
         devShells.default = pkgs.mkShell {
+          buildInputs = let
+            dev = pkgs.writeShellApplication {
+              name = "dev";
+              runtimeInputs = with pkgs; [ cargo-watch ];
+              text = "cargo-watch -c -w . -x run";
+            };
+          in with pkgs; [ cargo-watch dev ];
+
           shellHook = let
             libs = with pkgs; [ wayland libxkbcommon vulkan-loader libGL ];
             libPaths = lib.makeLibraryPath libs;
