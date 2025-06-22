@@ -1,18 +1,32 @@
+use iced::widget::mouse_area;
+
 use crate::components::section;
+
+#[derive(Debug, Clone, Copy)]
+enum TimeFormat {
+    _12h,
+    _24h,
+}
 
 pub struct Clock {
     now: jiff::Zoned,
+    format: TimeFormat,
+    expanded: bool,
 }
 
 #[derive(Debug, Clone)]
 pub enum ClockMessage {
     Tick(jiff::Zoned),
+    ToggleExpanded,
 }
 
 impl Clock {
     pub fn new() -> Self {
         Self {
             now: jiff::Zoned::now(),
+            // TODO: make configurable
+            format: TimeFormat::_12h,
+            expanded: false,
         }
     }
 
@@ -21,13 +35,28 @@ impl Clock {
             ClockMessage::Tick(local_time) => {
                 self.now = local_time;
             }
+            ClockMessage::ToggleExpanded => {
+                self.expanded = !self.expanded;
+            }
         }
     }
 
     pub fn view(&self) -> iced::Element<'_, ClockMessage> {
-        section(iced::widget::text(
-            self.now.strftime("%B %d, %X").to_string(),
-        ))
+        let format = match (self.format, self.expanded) {
+            // Sun 5:14 PM
+            (TimeFormat::_12h, false) => "%a %l:%M %p",
+            // Sunday, Jun 22 5:14:34 PM
+            (TimeFormat::_12h, true) => "%A, %b %e %H:%M:%S %p",
+            // Sun 22:14
+            (TimeFormat::_24h, false) => "%a %k:%M",
+            // Sunday, Jun 22 22:14:34
+            (TimeFormat::_24h, true) => "%A, %b %e %k:%M:%S",
+        };
+
+        mouse_area(section(iced::widget::text(
+            self.now.strftime(format).to_string(),
+        )))
+        .on_press(ClockMessage::ToggleExpanded)
         .into()
     }
 
