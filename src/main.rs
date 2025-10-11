@@ -1,14 +1,24 @@
-use iced::{Alignment, Color, Element, Event, Length, Task, Theme, widget::row};
-use iced_layershell::{
-    Application,
-    reexport::{Anchor, KeyboardInteractivity},
-    settings::{LayerShellSettings, Settings, StartMode},
-    to_layer_message,
+use std::collections::HashMap;
+
+use iced::{
+    Alignment, Element, Length, Task, Theme,
+    daemon::{Appearance, DefaultStyle},
+    event::wayland::{Event as WaylandEvent, LayerEvent, OutputEvent},
+    platform_specific::shell::commands::{
+        layer_surface::{destroy_layer_surface, get_layer_surface},
+        subsurface::{Anchor, KeyboardInteractivity, Layer},
+    },
+    runtime::platform_specific::wayland::layer_surface::{
+        IcedMargin, IcedOutput, SctkLayerSurfaceSettings,
+    },
+    widget::{container, row},
+    window,
 };
+use sctk::{output::OutputInfo, reexports::client::protocol::wl_output::WlOutput};
 
 use crate::{
     components::{icon, section, side},
-    desktop_environment::{Monitor, MonitorInfo},
+    desktop_environment::{Desktop, Event as DesktopEvent, WorkspaceInfo},
     sections::clock::{Clock, ClockMessage},
 };
 
@@ -18,7 +28,7 @@ mod icons;
 mod sections;
 
 #[tokio::main]
-pub async fn main() {
+pub async fn main() -> iced::Result {
     // Workaround for https://github.com/friedow/centerpiece/issues/237
     // WGPU picks the lower power GPU by default, which on some systems,
     // will pick an IGPU that doesn't exist leading to a black screen.
@@ -28,85 +38,61 @@ pub async fn main() {
         }
     }
 
-    let monitors = desktop_environment::listen_monitors();
-
-    let mut tasks = vec![];
-    while let Ok(monitor) = monitors.recv() {
-        let task = std::thread::spawn(move || {
-            let name = monitor.name();
-            let r = Limbo::run(Settings {
-                layer_settings: LayerShellSettings {
-                    size: Some((0, 40)),
-                    exclusive_zone: 40,
-                    anchor: Anchor::Top | Anchor::Left | Anchor::Right,
-                    keyboard_interactivity: KeyboardInteractivity::None,
-                    start_mode: StartMode::TargetScreen(monitor.name()),
-                    ..Default::default()
-                },
-                flags: Flags { monitor },
-                id: None,
-                fonts: Vec::new(),
-                default_font: iced::Font::default(),
-                default_text_size: iced::Pixels(16.0),
-                antialiasing: false,
-                virtual_keyboard_support: None,
-            });
-            println!("exiting on {name}");
-            r
-        });
-        tasks.push(task);
-    }
-
-    for task in tasks {
-        task.join().unwrap().unwrap();
-    }
+    iced::daemon("limbo", Limbo::update, Limbo::view)
+        .subscription(Limbo::subscription)
+        .theme(Limbo::theme)
+        .style(Limbo::style)
+        .run_with(Limbo::new)
 }
 
-#[derive(Debug)]
-struct Flags {
-    monitor: Monitor,
+struct Bar {
+    id: window::Id,
+    wl_output: WlOutput,
 }
 
 struct Limbo {
-    monitor: Monitor,
-    monitor_info: MonitorInfo,
+    desktop: Desktop,
+    workspace_infos: Option<Vec<WorkspaceInfo>>,
+
+    output_infos: HashMap<WlOutput, OutputInfo>,
+    bars: Vec<Bar>,
 
     clock: Clock,
 }
 
-#[to_layer_message]
 #[derive(Debug, Clone)]
 pub enum Message {
-    DesktopEvent(MonitorInfo),
-    IcedEvent(Event),
-
+    WaylandEvent(WaylandEvent),
+    DesktopEvent(DesktopEvent),
     Clock(ClockMessage),
 }
 
-impl Application for Limbo {
-    type Message = Message;
-    type Flags = Flags;
-    type Theme = Theme;
-    type Executor = iced::executor::Default;
-
-    fn new(flags: Self::Flags) -> (Self, Task<Message>) {
+impl Limbo {
+    fn new() -> (Self, Task<Message>) {
         (
             Self {
-                monitor: flags.monitor,
-                monitor_info: Default::default(),
+                desktop: Desktop::new(),
+                workspace_infos: None,
+                output_infos: HashMap::new(),
+                bars: Vec::new(),
                 clock: Clock::new(),
             },
             Task::none(),
         )
     }
 
-    fn namespace(&self) -> String {
-        "Limbo".to_string()
-    }
-
-    fn subscription(&self) -> iced::Subscription<Self::Message> {
+    fn subscription(&self) -> iced::Subscription<Message> {
         let subscriptions = vec![
-            self.monitor.subscription().map(Message::DesktopEvent),
+            iced::event::listen_with(|evt, _, _| {
+                if let iced::Event::PlatformSpecific(iced::event::PlatformSpecific::Wayland(evt)) =
+                    evt
+                {
+                    Some(Message::WaylandEvent(evt))
+                } else {
+                    None
+                }
+            }),
+            self.desktop.subscription().map(Message::DesktopEvent),
             self.clock.subscription().map(Message::Clock),
         ];
         iced::Subscription::batch(subscriptions)
@@ -114,24 +100,51 @@ impl Application for Limbo {
 
     fn update(&mut self, message: Message) -> Task<Message> {
         match message {
-            Message::DesktopEvent(monitor_info) => {
-                self.monitor_info = monitor_info;
+            Message::DesktopEvent(DesktopEvent::WorkspacesChanged(workspace_infos)) => {
+                self.workspace_infos = Some(workspace_infos);
                 Task::none()
             }
-            Message::IcedEvent(event) => {
-                println!("{event:?}");
-                Task::none()
-            }
+            Message::WaylandEvent(evt) => match evt {
+                WaylandEvent::Output(OutputEvent::Created(output_info), wl_output) => {
+                    if let Some(output_info) = output_info {
+                        self.output_infos.insert(wl_output.clone(), output_info);
+                    }
+
+                    self.spawn_bar(wl_output)
+                }
+                WaylandEvent::Output(OutputEvent::InfoUpdate(output_info), wl_output) => {
+                    self.output_infos.insert(wl_output, output_info);
+                    Task::none()
+                }
+                WaylandEvent::Output(OutputEvent::Removed, wl_output) => {
+                    self.output_infos.remove(&wl_output);
+
+                    let bars = self
+                        .bars
+                        .extract_if(.., |bar| bar.wl_output == wl_output)
+                        .collect::<Vec<_>>();
+
+                    Task::batch(bars.into_iter().map(|bar| destroy_layer_surface(bar.id)))
+                }
+                WaylandEvent::Layer(LayerEvent::Done, _wl_surface, id) => {
+                    let bars = self
+                        .bars
+                        .extract_if(.., |bar| bar.id == id)
+                        .collect::<Vec<_>>();
+
+                    Task::batch(bars.into_iter().map(|bar| self.spawn_bar(bar.wl_output)))
+                }
+                _ => Task::none(),
+            },
             Message::Clock(msg) => {
                 self.clock.update(msg);
                 Task::none()
             }
-            _ => unreachable!(),
         }
     }
 
-    fn view(&self) -> Element<'_, Message> {
-        row![
+    fn view(&self, window_id: window::Id) -> Element<'_, Message> {
+        let content = row![
             // Left
             side(
                 Alignment::Start,
@@ -156,24 +169,76 @@ impl Application for Limbo {
         ]
         .padding([4, 8])
         .width(Length::Fill)
-        .height(Length::Fill)
-        .into()
+        .height(Length::Fill);
+
+        let is_transparent = if let Some(workspace_infos) = &self.workspace_infos
+            && let Some(bar) = self.bars.iter().find(|bar| bar.id == window_id)
+            && let Some(output) = &self.output_infos.get(&bar.wl_output)
+            && let Some(output_name) = &output.name
+        {
+            !workspace_infos
+                .iter()
+                .any(|w| w.is_active && w.has_windows && w.output.as_ref() == Some(output_name))
+        } else {
+            false
+        };
+
+        container(content)
+            .style(move |theme| {
+                let palette = theme.extended_palette();
+
+                let background = if is_transparent {
+                    None
+                } else {
+                    Some(palette.background.base.color.into())
+                };
+
+                iced::widget::container::Style {
+                    icon_color: Some(palette.background.base.icon),
+                    text_color: Some(palette.background.base.icon),
+                    background,
+                    ..Default::default()
+                }
+            })
+            .into()
     }
 
-    fn theme(&self) -> Self::Theme {
+    fn theme(&self, _window_id: window::Id) -> Theme {
         Theme::CatppuccinMocha
     }
 
-    fn style(&self, theme: &Self::Theme) -> iced_layershell::Appearance {
-        use iced_layershell::Appearance;
-
+    fn style(&self, theme: &Theme) -> Appearance {
         Appearance {
-            background_color: if self.monitor_info.show_transparent {
-                Color::TRANSPARENT
-            } else {
-                theme.palette().background
-            },
-            text_color: theme.palette().text,
+            background_color: iced::Color::TRANSPARENT,
+            ..DefaultStyle::default_style(theme)
         }
+    }
+
+    fn spawn_bar(&mut self, wl_output: WlOutput) -> Task<Message> {
+        let id = window::Id::unique();
+
+        self.bars.push(Bar {
+            id,
+            wl_output: wl_output.clone(),
+        });
+
+        get_layer_surface(SctkLayerSurfaceSettings {
+            id,
+            layer: Layer::Top,
+            keyboard_interactivity: KeyboardInteractivity::None,
+            pointer_interactivity: true,
+            anchor: Anchor::TOP | Anchor::LEFT | Anchor::RIGHT,
+            output: IcedOutput::Output(wl_output),
+            namespace: "limbo:bar".to_string(),
+            margin: IcedMargin {
+                top: 0,
+                right: 0,
+                bottom: 0,
+                left: 0,
+            },
+            size: Some((None, Some(40))),
+            exclusive_zone: 40,
+            size_limits: iced::Limits::NONE,
+        })
     }
 }
