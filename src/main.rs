@@ -144,6 +144,14 @@ impl Limbo {
     }
 
     fn view(&self, window_id: window::Id) -> Element<'_, Message> {
+        if let Some(bar) = self.bars.iter().find(|bar| bar.id == window_id) {
+            self.view_bar(bar)
+        } else {
+            unreachable!("All windows are bars");
+        }
+    }
+
+    fn view_bar(&self, bar: &Bar) -> Element<'_, Message> {
         let content = row![
             // Left
             side(
@@ -172,7 +180,6 @@ impl Limbo {
         .height(Length::Fill);
 
         let is_transparent = if let Some(workspace_infos) = &self.workspace_infos
-            && let Some(bar) = self.bars.iter().find(|bar| bar.id == window_id)
             && let Some(output) = &self.output_infos.get(&bar.wl_output)
             && let Some(output_name) = &output.name
         {
