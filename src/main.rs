@@ -127,12 +127,8 @@ impl Limbo {
                     Task::batch(bars.into_iter().map(|bar| destroy_layer_surface(bar.id)))
                 }
                 WaylandEvent::Layer(LayerEvent::Done, _wl_surface, id) => {
-                    let bars = self
-                        .bars
-                        .extract_if(.., |bar| bar.id == id)
-                        .collect::<Vec<_>>();
-
-                    Task::batch(bars.into_iter().map(|bar| self.spawn_bar(bar.wl_output)))
+                    self.bars.retain(|bar| bar.id != id);
+                    Task::none()
                 }
                 _ => Task::none(),
             },
