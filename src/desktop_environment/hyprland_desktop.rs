@@ -5,6 +5,8 @@ use std::{
 
 use hyprland::{
     data::{Monitor as HMonitor, Monitors, Workspace, Workspaces},
+    dispatch,
+    dispatch::WorkspaceIdentifierWithSpecial,
     event_listener::{EventListener, MonitorAddedEventData, WorkspaceEventData},
     shared::{HyprData, MonitorId, WorkspaceId},
 };
@@ -20,6 +22,16 @@ pub fn listen_monitors() -> mpsc::Receiver<Monitor> {
     mrx
 }
 
+pub fn get_monitor_workspaces(id: MonitorId) -> Vec<WorkspaceId> {
+    if id == 0 {
+        vec![1, 2, 3, 4, 5, 6]
+    } else if id == 1 {
+        vec![7, 8, 9, 10, 11, 12]
+    } else {
+        panic!("no monitor with id {}", id)
+    }
+}
+
 fn get_monitor(id: MonitorId) -> Option<HMonitor> {
     Monitors::get().ok()?.into_iter().find(|m| m.id == id)
 }
@@ -28,30 +40,32 @@ fn get_workspace(id: WorkspaceId) -> Option<Workspace> {
     Workspaces::get().ok()?.into_iter().find(|m| m.id == id)
 }
 
+pub fn focus_workspace(workspace_id: WorkspaceId) {
+    let _ = dispatch!(Workspace, WorkspaceIdentifierWithSpecial::Id(workspace_id));
+}
+
 fn make_monitor_info(monitor_id: MonitorId) -> Option<MonitorInfo> {
     let monitor = get_monitor(monitor_id)?;
     let mut workspaces = Workspaces::get()
         .ok()?
         .into_iter()
-        .filter(|w| w.monitor_id == monitor_id)
+        .filter(|w| w.monitor_id == Some(monitor_id))
         .collect::<Vec<_>>();
     workspaces.sort_by_key(|w| w.id);
     let active_workspace = workspaces
         .iter()
-        .enumerate()
-        .find(|(_, w)| w.id == monitor.active_workspace.id);
+        .find(|w| w.id == monitor.active_workspace.id);
 
     Some(MonitorInfo {
         workspaces: workspaces
             .iter()
             .map(|w| WorkspaceInfo {
+                id: w.id,
                 has_windows: w.windows > 0,
             })
             .collect(),
-        active_workspace_idx: active_workspace.map(|w| w.0),
-        show_transparent: active_workspace
-            .map(|(_, w)| w.windows == 0)
-            .unwrap_or_default(),
+        active_workspace_id: monitor.active_workspace.id,
+        show_transparent: active_workspace.map(|w| w.windows == 0).unwrap_or_default(),
     })
 }
 
@@ -74,7 +88,11 @@ fn run(mtx: mpsc::Sender<Monitor>) {
 
             let (tx, mut rx) = watch::channel(monitor_info);
             rx.mark_changed();
-            let _ = mtx.send(Monitor::new(monitor_added_event_data.name, rx));
+            let _ = mtx.send(Monitor::new(
+                monitor_added_event_data.id,
+                monitor_added_event_data.name,
+                rx,
+            ));
             let mut senders = senders.lock().unwrap();
             senders.insert(monitor_added_event_data.id as MonitorId, tx);
         }
@@ -82,7 +100,7 @@ fn run(mtx: mpsc::Sender<Monitor>) {
 
     for monitor in Monitors::get().unwrap().into_iter() {
         handler(MonitorAddedEventData {
-            id: monitor.id as u8,
+            id: monitor.id,
             name: monitor.name,
             description: monitor.description,
         });
@@ -95,7 +113,8 @@ fn run(mtx: mpsc::Sender<Monitor>) {
         move |workspace_event_data: WorkspaceEventData| {
             let senders = senders.lock().expect("lock should not be poisoned");
             if let Some(workspace) = get_workspace(workspace_event_data.id)
-                && let Some(monitor) = get_monitor(workspace.monitor_id)
+                && let Some(monitor_id) = workspace.monitor_id
+                && let Some(monitor) = get_monitor(monitor_id)
                 && let Some(tx) = senders.get(&monitor.id)
                 && let Some(monitor_info) = make_monitor_info(monitor.id)
             {

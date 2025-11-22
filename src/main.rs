@@ -1,4 +1,4 @@
-use iced::{Alignment, Color, Element, Event, Length, Task, Theme, widget::row};
+use iced::{Alignment, Color, Element, Event, Length, Task, Theme, theme::Palette, widget::row};
 use iced_layershell::{
     Application,
     reexport::{Anchor, KeyboardInteractivity},
@@ -8,8 +8,11 @@ use iced_layershell::{
 
 use crate::{
     components::{icon, section, side},
-    desktop_environment::{Monitor, MonitorInfo},
-    sections::clock::{Clock, ClockMessage},
+    desktop_environment::{Monitor, MonitorInfo, get_monitor_workspaces},
+    sections::{
+        clock::{Clock, ClockMessage},
+        workspaces::{Workspaces, WorkspacesMessage},
+    },
 };
 
 mod components;
@@ -46,8 +49,13 @@ pub async fn main() {
                 flags: Flags { monitor },
                 id: None,
                 fonts: Vec::new(),
-                default_font: iced::Font::default(),
-                default_text_size: iced::Pixels(16.0),
+                default_font: iced::Font {
+                    family: iced::font::Family::Name("DejaVu Sans Mono"),
+                    weight: iced::font::Weight::Normal,
+                    stretch: iced::font::Stretch::Normal,
+                    style: iced::font::Style::Normal,
+                },
+                default_text_size: iced::Pixels(14.0),
                 antialiasing: false,
                 virtual_keyboard_support: None,
             });
@@ -72,6 +80,7 @@ struct Limbo {
     monitor_info: MonitorInfo,
 
     clock: Clock,
+    workspaces: Workspaces,
 }
 
 #[to_layer_message]
@@ -79,8 +88,8 @@ struct Limbo {
 pub enum Message {
     DesktopEvent(MonitorInfo),
     IcedEvent(Event),
-
     Clock(ClockMessage),
+    Workspaces(WorkspacesMessage),
 }
 
 impl Application for Limbo {
@@ -90,11 +99,13 @@ impl Application for Limbo {
     type Executor = iced::executor::Default;
 
     fn new(flags: Self::Flags) -> (Self, Task<Message>) {
+        let workspaces = get_monitor_workspaces(flags.monitor.id());
         (
             Self {
                 monitor: flags.monitor,
                 monitor_info: Default::default(),
                 clock: Clock::new(),
+                workspaces: Workspaces::new(workspaces),
             },
             Task::none(),
         )
@@ -105,17 +116,22 @@ impl Application for Limbo {
     }
 
     fn subscription(&self) -> iced::Subscription<Self::Message> {
-        let subscriptions = vec![
+        let mut subscriptions = vec![
             self.monitor.subscription().map(Message::DesktopEvent),
             self.clock.subscription().map(Message::Clock),
         ];
+        if let Some(workspace_subscription) = self.workspaces.subscription() {
+            subscriptions.push(workspace_subscription.map(Message::Workspaces));
+        }
         iced::Subscription::batch(subscriptions)
     }
 
     fn update(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::DesktopEvent(monitor_info) => {
-                self.monitor_info = monitor_info;
+                self.monitor_info = monitor_info.clone();
+                self.workspaces
+                    .update(WorkspacesMessage::DesktopEvent(monitor_info));
                 Task::none()
             }
             Message::IcedEvent(event) => {
@@ -124,6 +140,10 @@ impl Application for Limbo {
             }
             Message::Clock(msg) => {
                 self.clock.update(msg);
+                Task::none()
+            }
+            Message::Workspaces(msg) => {
+                self.workspaces.update(msg);
                 Task::none()
             }
             _ => unreachable!(),
@@ -146,12 +166,12 @@ impl Application for Limbo {
             // Center
             side(
                 Alignment::Center,
-                row![self.clock.view().map(Message::Clock)].spacing(12)
+                row![self.workspaces.view().map(Message::Workspaces)].spacing(12)
             ),
             // Right
             side(
                 Alignment::End,
-                row![section(icon("nix-snowflake-white", None))].spacing(12)
+                row![self.clock.view().map(Message::Clock)].spacing(12)
             ),
         ]
         .padding([4, 8])
@@ -161,7 +181,21 @@ impl Application for Limbo {
     }
 
     fn theme(&self) -> Self::Theme {
-        Theme::CatppuccinMocha
+        Theme::custom(
+            "internal".to_string(),
+            Palette {
+                text: Color::WHITE,
+                background: Color::from_rgb(
+                    0x1e as f32 / 255.0,
+                    0x1e as f32 / 255.0,
+                    0x2e as f32 / 255.0,
+                ),
+                // Unused
+                primary: Color::BLACK,
+                success: Color::BLACK,
+                danger: Color::BLACK,
+            },
+        )
     }
 
     fn style(&self, theme: &Self::Theme) -> iced_layershell::Appearance {

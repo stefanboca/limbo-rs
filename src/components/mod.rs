@@ -1,5 +1,5 @@
 use iced::{
-    Alignment, Border, Color, Length,
+    Alignment, Border, Color, Length, Theme,
     widget::{
         Container, container, svg,
         svg::{Handle, Svg},
@@ -39,14 +39,19 @@ pub fn icon(name: &'_ str, color: Option<Color>) -> Svg<'_> {
     svg(Handle::from_memory(
         Icons::get(&format!("{name}.svg")).unwrap().data,
     ))
-    .style(move |_, _| svg::Style { color })
+    .style(move |theme: &Theme, _| svg::Style {
+        color: color.or(Some(theme.palette().text)),
+    })
     .width(Length::Shrink)
+    .height(Length::Fixed(16.))
 }
 
 pub fn icon_filled(name: &'_ str, color: Option<Color>) -> Svg<'_> {
     svg(Handle::from_memory(
         IconsFilled::get(&format!("{name}.svg")).unwrap().data,
     ))
-    .style(move |_, _| svg::Style { color })
+    .style(move |theme: &Theme, _| svg::Style {
+        color: color.or(Some(theme.palette().text)),
+    })
     .width(Length::Shrink)
 }

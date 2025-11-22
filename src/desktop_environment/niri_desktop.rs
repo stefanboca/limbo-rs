@@ -57,23 +57,21 @@ fn run(
                     let workspaces_infos = workspaces_on_output
                         .iter()
                         .map(|w| WorkspaceInfo {
+                            id: w.id as i32,
                             has_windows: w.active_window_id.is_some(),
                         })
                         .collect::<Vec<_>>();
 
-                    let active_workspace_idx = workspaces_on_output
-                        .iter()
-                        .find(|w| w.is_active)
-                        .map(|w| w.idx as usize - 1);
+                    let active_workspace = workspaces_on_output.iter().find(|w| w.is_active);
                     let show_transparent = overview_open
-                        || !active_workspace_idx
-                            .and_then(|idx| workspaces_infos.get(idx))
-                            .map(|w| w.has_windows)
+                        || !active_workspace
+                            .map(|w| w.active_window_id.is_some())
                             .unwrap_or_default();
 
                     let monitor_info = MonitorInfo {
                         workspaces: workspaces_infos,
-                        active_workspace_idx,
+                        active_workspace_id: active_workspace.map(|w| w.id).unwrap_or_default()
+                            as i32,
                         show_transparent,
                     };
 
@@ -82,7 +80,7 @@ fn run(
                     } else {
                         let (tx, mut rx) = watch::channel(monitor_info);
                         rx.mark_changed();
-                        let _ = mtx.send(Monitor::new(output.clone(), rx));
+                        let _ = mtx.send(Monitor::new(0, output.clone(), rx));
                         senders.insert(output.clone(), tx);
                     }
                 }
@@ -104,10 +102,10 @@ fn run(
                                 .unwrap_or_default();
                         let modified = (
                             monitor_info.show_transparent,
-                            monitor_info.active_workspace_idx,
-                        ) != (show_transparent, Some(idx));
+                            monitor_info.active_workspace_id,
+                        ) != (show_transparent, id as i32);
                         monitor_info.show_transparent = show_transparent;
-                        monitor_info.active_workspace_idx = Some(idx);
+                        monitor_info.active_workspace_id = id as i32;
                         modified
                     });
                 }
@@ -122,9 +120,13 @@ fn run(
                 {
                     let has_windows = active_window_id.is_some();
                     tx.send_if_modified(|monitor_info| {
-                        if let Some(active_workspace_info) = monitor_info
-                            .active_workspace_idx
-                            .and_then(|idx| monitor_info.workspaces.get_mut(idx))
+                        // TODO: better way to write this?
+                        let active_idx = monitor_info
+                            .workspaces
+                            .iter()
+                            .position(|w| w.id == monitor_info.active_workspace_id);
+                        if let Some(active_workspace_info) =
+                            active_idx.and_then(|idx| monitor_info.workspaces.get_mut(idx))
                         {
                             let show_transparent =
                                 overview_open || !active_workspace_info.has_windows;
@@ -147,8 +149,9 @@ fn run(
                     tx.send_if_modified(|monitor_info| {
                         let show_transparent = overview_open
                             || !monitor_info
-                                .active_workspace_idx
-                                .and_then(|idx| monitor_info.workspaces.get(idx))
+                                .workspaces
+                                .iter()
+                                .find(|w| w.id == monitor_info.active_workspace_id)
                                 .map(|w| w.has_windows)
                                 .unwrap_or_default();
                         let modified = monitor_info.show_transparent != show_transparent;
