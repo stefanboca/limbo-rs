@@ -67,18 +67,18 @@ impl Monitor {
             }),
         )
     }
-}
 
-pub fn get_monitor_workspaces(name: &str) -> Vec<WorkspaceId> {
-    #[cfg(feature = "hyprland")]
-    {
-        use hyprland::shared::HyprData;
-        if hyprland::data::Version::get().is_ok() {
-            return hyprland_desktop::get_monitor_workspaces(name);
+    pub fn workspaces(&self) -> Vec<WorkspaceId> {
+        #[cfg(feature = "hyprland")]
+        {
+            use hyprland::shared::HyprData;
+            if hyprland::data::Version::get().is_ok() {
+                return hyprland_desktop::get_monitor_workspaces(&self.name);
+            }
         }
-    }
 
-    panic!("no compatible desktop environment detected");
+        panic!("no compatible desktop environment detected");
+    }
 }
 
 pub fn listen_monitors() -> mpsc::Receiver<Monitor> {

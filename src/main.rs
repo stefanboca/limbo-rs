@@ -8,7 +8,7 @@ use iced_layershell::{
 
 use crate::{
     components::{icon, section, side},
-    desktop_environment::{Monitor, MonitorInfo, get_monitor_workspaces},
+    desktop_environment::{Monitor, MonitorInfo},
     sections::{
         clock::{Clock, ClockMessage},
         sysmon::{Sysmon, SysmonMessage},
@@ -102,7 +102,7 @@ impl Application for Limbo {
     type Executor = iced::executor::Default;
 
     fn new(flags: Self::Flags) -> (Self, Task<Message>) {
-        let workspaces = get_monitor_workspaces(&flags.monitor.name());
+        let workspaces = flags.monitor.workspaces();
         (
             Self {
                 monitor: flags.monitor,
