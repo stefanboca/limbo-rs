@@ -69,12 +69,12 @@ impl Monitor {
     }
 }
 
-pub fn get_monitor_workspaces(id: MonitorId) -> Vec<WorkspaceId> {
+pub fn get_monitor_workspaces(name: &str) -> Vec<WorkspaceId> {
     #[cfg(feature = "hyprland")]
     {
         use hyprland::shared::HyprData;
         if hyprland::data::Version::get().is_ok() {
-            return hyprland_desktop::get_monitor_workspaces(id);
+            return hyprland_desktop::get_monitor_workspaces(name);
         }
     }
 

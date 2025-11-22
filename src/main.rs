@@ -102,7 +102,7 @@ impl Application for Limbo {
     type Executor = iced::executor::Default;
 
     fn new(flags: Self::Flags) -> (Self, Task<Message>) {
-        let workspaces = get_monitor_workspaces(flags.monitor.id());
+        let workspaces = get_monitor_workspaces(&flags.monitor.name());
         (
             Self {
                 monitor: flags.monitor,

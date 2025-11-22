@@ -4,7 +4,7 @@ use std::{
 };
 
 use hyprland::{
-    data::{Monitor as HMonitor, Monitors, Workspace, Workspaces},
+    data::{Monitor as HMonitor, Monitors, Workspace, WorkspaceRules, Workspaces},
     dispatch,
     dispatch::WorkspaceIdentifierWithSpecial,
     event_listener::{EventListener, MonitorAddedEventData, WorkspaceEventData},
@@ -22,14 +22,13 @@ pub fn listen_monitors() -> mpsc::Receiver<Monitor> {
     mrx
 }
 
-pub fn get_monitor_workspaces(id: MonitorId) -> Vec<WorkspaceId> {
-    if id == 0 {
-        vec![1, 2, 3, 4, 5, 6]
-    } else if id == 1 {
-        vec![7, 8, 9, 10, 11, 12]
-    } else {
-        panic!("no monitor with id {}", id)
-    }
+pub fn get_monitor_workspaces(name: &str) -> Vec<WorkspaceId> {
+    WorkspaceRules::get()
+        .unwrap()
+        .iter()
+        .filter(|rule| rule.monitor == Some(name.to_string()))
+        .filter_map(|rule| rule.workspace_string.parse::<i32>().ok())
+        .collect()
 }
 
 fn get_monitor(id: MonitorId) -> Option<HMonitor> {
