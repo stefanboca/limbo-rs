@@ -11,6 +11,7 @@ use crate::{
     desktop_environment::{Monitor, MonitorInfo, get_monitor_workspaces},
     sections::{
         clock::{Clock, ClockMessage},
+        sysmon::{Sysmon, SysmonMessage},
         workspaces::{Workspaces, WorkspacesMessage},
     },
 };
@@ -81,6 +82,7 @@ struct Limbo {
 
     clock: Clock,
     workspaces: Workspaces,
+    sysmon: Sysmon,
 }
 
 #[to_layer_message]
@@ -90,6 +92,7 @@ pub enum Message {
     IcedEvent(Event),
     Clock(ClockMessage),
     Workspaces(WorkspacesMessage),
+    Sysmon(SysmonMessage),
 }
 
 impl Application for Limbo {
@@ -106,6 +109,7 @@ impl Application for Limbo {
                 monitor_info: Default::default(),
                 clock: Clock::new(),
                 workspaces: Workspaces::new(workspaces),
+                sysmon: Sysmon::new(),
             },
             Task::none(),
         )
@@ -119,6 +123,7 @@ impl Application for Limbo {
         let mut subscriptions = vec![
             self.monitor.subscription().map(Message::DesktopEvent),
             self.clock.subscription().map(Message::Clock),
+            self.sysmon.subscription().map(Message::Sysmon),
         ];
         if let Some(workspace_subscription) = self.workspaces.subscription() {
             subscriptions.push(workspace_subscription.map(Message::Workspaces));
@@ -146,6 +151,10 @@ impl Application for Limbo {
                 self.workspaces.update(msg);
                 Task::none()
             }
+            Message::Sysmon(msg) => {
+                self.sysmon.update(msg);
+                Task::none()
+            }
             _ => unreachable!(),
         }
     }
@@ -171,7 +180,11 @@ impl Application for Limbo {
             // Right
             side(
                 Alignment::End,
-                row![self.clock.view().map(Message::Clock)].spacing(12)
+                row![
+                    self.sysmon.view().map(Message::Sysmon),
+                    self.clock.view().map(Message::Clock)
+                ]
+                .spacing(12)
             ),
         ]
         .padding([4, 8])
