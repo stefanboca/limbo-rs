@@ -47,7 +47,7 @@ impl Clock {
             // Sun 5:14 PM
             (TimeFormat::_12h, false) => "%a%l:%M %p",
             // Sunday, Jun 22 5:14:34 PM
-            (TimeFormat::_12h, true) => "%A, %b %e %H:%M:%S %p",
+            (TimeFormat::_12h, true) => "%A, %b %d %H:%M:%S %p",
             // Sun 22:14
             (TimeFormat::_24h, false) => "%a %k:%M",
             // Sunday, Jun 22 22:14:34
@@ -72,6 +72,8 @@ impl Clock {
     }
 }
 
+/// Returns an [`iced::Subscription`] that produces a message at every integer second
+/// or minute transition, such that the clock is updated exactly on time.
 pub mod time {
     use iced::{
         Subscription,
