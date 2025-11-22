@@ -1,6 +1,6 @@
-use iced::widget::mouse_area;
+use iced::widget::{mouse_area, row, text};
 
-use crate::components::section;
+use crate::components::{icon, section};
 
 #[derive(Debug, Clone, Copy)]
 enum TimeFormat {
@@ -37,6 +37,7 @@ impl Clock {
             }
             ClockMessage::ToggleExpanded => {
                 self.expanded = !self.expanded;
+                self.now = jiff::Zoned::now();
             }
         }
     }
@@ -44,7 +45,7 @@ impl Clock {
     pub fn view(&self) -> iced::Element<'_, ClockMessage> {
         let format = match (self.format, self.expanded) {
             // Sun 5:14 PM
-            (TimeFormat::_12h, false) => "%a %l:%M %p",
+            (TimeFormat::_12h, false) => "%a%l:%M %p",
             // Sunday, Jun 22 5:14:34 PM
             (TimeFormat::_12h, true) => "%A, %b %e %H:%M:%S %p",
             // Sun 22:14
@@ -52,16 +53,22 @@ impl Clock {
             // Sunday, Jun 22 22:14:34
             (TimeFormat::_24h, true) => "%A, %b %e %k:%M:%S",
         };
+        let formatted_date = self.now.strftime(format).to_string();
 
-        mouse_area(section(iced::widget::text(
-            self.now.strftime(format).to_string(),
-        )))
+        mouse_area(section(
+            row![icon("clock", None), text(formatted_date)].spacing(8),
+        ))
         .on_press(ClockMessage::ToggleExpanded)
         .into()
     }
 
     pub fn subscription(&self) -> iced::Subscription<ClockMessage> {
-        time::every_second().map(|_| ClockMessage::Tick(jiff::Zoned::now()))
+        if self.expanded {
+            time::every_second()
+        } else {
+            time::every_minute()
+        }
+        .map(|_| ClockMessage::Tick(jiff::Zoned::now()))
     }
 }
 
@@ -71,20 +78,25 @@ pub mod time {
         advanced::subscription::{self, Hasher},
     };
 
-    /// Returns an [`iced::Subscription`] that produces a message at every integer second
-    /// transition.
-    pub fn every_second() -> Subscription<std::time::Instant> {
-        subscription::from_recipe(EverySecond())
+    pub fn every_second() -> Subscription<()> {
+        subscription::from_recipe(Timer { seconds: true })
     }
 
-    struct EverySecond();
+    pub fn every_minute() -> Subscription<()> {
+        subscription::from_recipe(Timer { seconds: false })
+    }
 
-    impl subscription::Recipe for EverySecond {
-        type Output = std::time::Instant;
+    struct Timer {
+        seconds: bool,
+    }
+
+    impl subscription::Recipe for Timer {
+        type Output = ();
 
         fn hash(&self, state: &mut Hasher) {
             use std::hash::Hash;
             std::any::TypeId::of::<Self>().hash(state);
+            self.seconds.hash(state);
         }
 
         fn stream(
@@ -93,24 +105,24 @@ pub mod time {
         ) -> iced::futures::stream::BoxStream<'static, Self::Output> {
             use iced::futures::stream::StreamExt;
 
-            let now = tokio::time::Instant::now();
-            let now_sys = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .expect("system time is valid");
+            let seconds = self.seconds;
+            let stream = iced::futures::stream::unfold((), move |_| async move {
+                let now_sys = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .expect("system time is valid");
 
-            let subsec_nanos = now_sys.subsec_nanos() as u64;
-            let until_next_second = std::time::Duration::from_secs(1)
-                .checked_sub(std::time::Duration::from_nanos(subsec_nanos))
-                .unwrap_or_default();
+                let delay = if seconds {
+                    // Wait until next second
+                    std::time::Duration::from_nanos(1_000_000_000 - now_sys.subsec_nanos() as u64)
+                } else {
+                    // Wait until next minute
+                    let secs_into_minute = now_sys.as_secs() % 60;
+                    let nanos = now_sys.subsec_nanos() as u64;
+                    std::time::Duration::from_nanos((60 - secs_into_minute) * 1_000_000_000 - nanos)
+                };
 
-            let mut interval = tokio::time::interval_at(
-                now + until_next_second,
-                tokio::time::Duration::from_secs(1),
-            );
-            interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-
-            let stream = iced::futures::stream::unfold(interval, |mut interval| async move {
-                Some((interval.tick().await.into_std(), interval))
+                tokio::time::sleep(delay).await;
+                Some(((), ()))
             });
 
             stream.boxed()
