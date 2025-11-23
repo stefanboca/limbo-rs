@@ -109,3 +109,15 @@ pub fn focus_workspace(workspace_id: WorkspaceId) {
 
     panic!("no compatible desktop environment detected");
 }
+
+pub fn cycle_workspace(forward: bool) {
+    #[cfg(feature = "hyprland")]
+    {
+        use hyprland::shared::HyprData;
+        if hyprland::data::Version::get().is_ok() {
+            return hyprland_desktop::cycle_workspace(forward);
+        }
+    }
+
+    panic!("no compatible desktop environment detected");
+}

@@ -43,6 +43,16 @@ pub fn focus_workspace(workspace_id: WorkspaceId) {
     let _ = dispatch!(Workspace, WorkspaceIdentifierWithSpecial::Id(workspace_id));
 }
 
+pub fn cycle_workspace(forward: bool) {
+    let _ = dispatch!(
+        Workspace,
+        WorkspaceIdentifierWithSpecial::RelativeMonitor(match forward {
+            true => 1,
+            false => -1,
+        })
+    );
+}
+
 fn make_monitor_info(monitor_id: MonitorId) -> Option<MonitorInfo> {
     let monitor = get_monitor(monitor_id)?;
     let mut workspaces = Workspaces::get()

@@ -2,12 +2,15 @@ use std::time::Duration;
 
 use iced::{
     Border, Color,
+    advanced::mouse,
     widget::{Row, container, mouse_area, text},
 };
 
 use crate::{
     components::section,
-    desktop_environment::{MonitorInfo, WorkspaceId, WorkspaceInfo, focus_workspace},
+    desktop_environment::{
+        MonitorInfo, WorkspaceId, WorkspaceInfo, cycle_workspace, focus_workspace,
+    },
 };
 
 mod state;
@@ -24,6 +27,7 @@ pub enum WorkspacesMessage {
     Tick,
     DesktopEvent(MonitorInfo),
     FocusWorkspace(WorkspaceId),
+    CycleWorkspace(bool),
 }
 
 impl Workspaces {
@@ -53,6 +57,7 @@ impl Workspaces {
                 }
             }
             WorkspacesMessage::FocusWorkspace(workspace_id) => focus_workspace(workspace_id),
+            WorkspacesMessage::CycleWorkspace(forward) => cycle_workspace(forward),
         }
     }
 
@@ -86,6 +91,18 @@ impl Workspaces {
                     .padding([8, 15 - width]),
                 )
                 .on_press(WorkspacesMessage::FocusWorkspace(w.id))
+                .on_scroll(|delta| {
+                    let y = match delta {
+                        mouse::ScrollDelta::Pixels { y, .. } => y,
+                        mouse::ScrollDelta::Lines { y, .. } => y,
+                    };
+                    match y {
+                        0.0 => WorkspacesMessage::Tick,
+                        ..0. => WorkspacesMessage::CycleWorkspace(true),
+                        0.0.. => WorkspacesMessage::CycleWorkspace(false),
+                        _ => WorkspacesMessage::Tick,
+                    }
+                })
                 .into()
             })
             .collect::<Vec<_>>();
