@@ -8,7 +8,7 @@
     fenix.inputs.nixpkgs.follows = "nixpkgs";
   };
 
-  outputs = inputs@{ flake-parts, nixpkgs, ... }:
+  outputs = inputs@{ self, flake-parts, nixpkgs, ... }:
     flake-parts.lib.mkFlake { inherit inputs; } {
       systems = [ "x86_64-linux" "aarch64-linux" ];
 
@@ -45,7 +45,10 @@
           default = self'.packages.limbo-rs;
         };
 
-        devShells.default = pkgs.mkShell {
+        devShells.default = let
+          libs = with pkgs; [ wayland libxkbcommon vulkan-loader libGL ];
+          libPaths = lib.makeLibraryPath libs;
+        in pkgs.mkShell {
           buildInputs = let
             dev = pkgs.writeShellApplication {
               name = "dev";
@@ -54,12 +57,7 @@
             };
           in with pkgs; [ cargo-watch dev ];
 
-          shellHook = let
-            libs = with pkgs; [ wayland libxkbcommon vulkan-loader libGL ];
-            libPaths = lib.makeLibraryPath libs;
-          in ''
-            export LD_LIBRARY_PATH="${libPaths}:$LD_LIBRARY_PATH"
-          '';
+          env.LD_LIBRARY_PATH = "${libPaths}";
         };
       };
     };
