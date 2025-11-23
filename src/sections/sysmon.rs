@@ -42,7 +42,8 @@ impl Sysmon {
 
     pub fn view(&self) -> iced::Element<'_, SysmonMessage> {
         let cpu_usage = self.system.global_cpu_usage();
-        let ram = (self.system.total_memory() - self.system.available_memory()) / 1_000_000_000;
+        let ram =
+            (self.system.total_memory() - self.system.available_memory()) as f64 / 1_000_000_000.0;
 
         let temperatures = self.components.list();
         let cpu_temp = temperatures
