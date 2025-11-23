@@ -27,11 +27,23 @@
               cargo = toolchain;
               rustc = toolchain;
             };
+            fs = lib.fileset;
+            rustFs = fs.unions [
+              # Cargo.*
+              (fs.fileFilter (file: lib.hasPrefix "Cargo" file.name) ./.)
+              # *.rs
+              (fs.fileFilter (file: file.hasExt "rs") ./.)
+              # *.svg
+              (fs.fileFilter (file: file.hasExt "svg") ./assets)
+            ];
           in rustPlatform.buildRustPackage {
             pname = "limbo-rs";
             version = "0-unstable";
 
-            src = ./.;
+            src = fs.toSource {
+              root = ./.;
+              fileset = rustFs;
+            };
             cargoLock.lockFile = ./Cargo.lock;
 
             meta = {
@@ -50,13 +62,25 @@
           libs = with pkgs; [ wayland libxkbcommon vulkan-loader libGL ];
           libPaths = lib.makeLibraryPath libs;
         in pkgs.mkShell {
-          buildInputs = let
+          packages = let
             dev = pkgs.writeShellApplication {
               name = "dev";
               runtimeInputs = with pkgs; [ cargo-watch ];
               text = "cargo-watch -c -w . -x run";
             };
-          in with pkgs; [ cargo-watch dev ];
+          in with pkgs; [
+            cargo-watch
+            dev
+
+            (pkgs.fenix.complete.withComponents [
+              "cargo"
+              "clippy"
+              "rust-src"
+              "rustc"
+              "rustfmt"
+            ])
+            pkgs.rust-analyzer-nightly
+          ];
 
           env.LD_LIBRARY_PATH = "${libPaths}";
         };
