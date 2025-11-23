@@ -57,7 +57,7 @@ pub async fn main() {
                     style: iced::font::Style::Normal,
                 },
                 default_text_size: iced::Pixels(14.0),
-                antialiasing: false,
+                antialiasing: true,
                 virtual_keyboard_support: None,
             });
             println!("exiting on {name}");

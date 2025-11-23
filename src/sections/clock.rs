@@ -45,7 +45,7 @@ impl Clock {
     pub fn view(&self) -> iced::Element<'_, ClockMessage> {
         let format = match (self.format, self.expanded) {
             // Sun 5:14 PM
-            (TimeFormat::_12h, false) => "%a %l:%M %p",
+            (TimeFormat::_12h, false) => "%a %-I:%M %p",
             // Sunday, Jun 22 5:14:34 PM
             (TimeFormat::_12h, true) => "%A, %b %d %H:%M:%S %p",
             // Sun 22:14
