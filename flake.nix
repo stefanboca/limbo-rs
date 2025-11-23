@@ -10,6 +10,7 @@
 
   outputs = inputs@{ self, flake-parts, nixpkgs, ... }:
     flake-parts.lib.mkFlake { inherit inputs; } {
+      imports = [ ./nix/modules.nix ];
       systems = [ "x86_64-linux" "aarch64-linux" ];
 
       perSystem = { config, self', inputs', pkgs, lib, system, ... }: {
