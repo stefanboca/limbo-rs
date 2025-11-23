@@ -4,7 +4,7 @@ use std::{
 };
 
 use hyprland::{
-    data::{Monitor as HMonitor, Monitors, WorkspaceRules, Workspaces},
+    data::{Clients, Monitor as HMonitor, Monitors, WorkspaceRules, Workspaces},
     dispatch,
     dispatch::WorkspaceIdentifierWithSpecial,
     event_listener::{EventListener, MonitorAddedEventData},
@@ -70,7 +70,22 @@ fn make_monitor_info(monitor_id: MonitorId) -> Option<MonitorInfo> {
             })
             .collect(),
         active_workspace_id: monitor.active_workspace.id,
-        show_transparent: active_workspace.map(|w| w.windows == 0).unwrap_or_default(),
+        show_transparent: active_workspace
+            .map(|w| {
+                if w.windows == 0 {
+                    true
+                } else {
+                    Clients::get()
+                        .map(|clients| {
+                            clients
+                                .into_iter()
+                                .filter(|c| c.workspace.id == w.id)
+                                .all(|c| c.floating)
+                        })
+                        .unwrap_or_default()
+                }
+            })
+            .unwrap_or_default(),
     })
 }
 
