@@ -4,10 +4,10 @@ use std::{
 };
 
 use hyprland::{
-    data::{Monitor as HMonitor, Monitors, Workspace, WorkspaceRules, Workspaces},
+    data::{Monitor as HMonitor, Monitors, WorkspaceRules, Workspaces},
     dispatch,
     dispatch::WorkspaceIdentifierWithSpecial,
-    event_listener::{EventListener, MonitorAddedEventData, WorkspaceEventData},
+    event_listener::{EventListener, MonitorAddedEventData},
     shared::{HyprData, MonitorId, WorkspaceId},
 };
 use tokio::sync::watch;
@@ -33,10 +33,6 @@ pub fn get_monitor_workspaces(name: &str) -> Vec<WorkspaceId> {
 
 fn get_monitor(id: MonitorId) -> Option<HMonitor> {
     Monitors::get().ok()?.into_iter().find(|m| m.id == id)
-}
-
-fn get_workspace(id: WorkspaceId) -> Option<Workspace> {
-    Workspaces::get().ok()?.into_iter().find(|m| m.id == id)
 }
 
 pub fn focus_workspace(workspace_id: WorkspaceId) {
@@ -116,39 +112,33 @@ fn run(mtx: mpsc::Sender<Monitor>) {
     }
     event_listener.add_monitor_added_handler(handler);
 
-    fn mk_workspace_change_handler(
+    fn mk_workspace_change_handler<T>(
         senders: Arc<Mutex<HashMap<MonitorId, watch::Sender<MonitorInfo>>>>,
-    ) -> impl Fn(WorkspaceEventData) {
-        move |workspace_event_data: WorkspaceEventData| {
+    ) -> impl Fn(T) {
+        move |_| {
             let senders = senders.lock().expect("lock should not be poisoned");
-            if let Some(workspace) = get_workspace(workspace_event_data.id)
-                && let Some(monitor_id) = workspace.monitor_id
-                && let Some(monitor) = get_monitor(monitor_id)
-                && let Some(tx) = senders.get(&monitor.id)
-                && let Some(monitor_info) = make_monitor_info(monitor.id)
-            {
-                let _ = tx.send_if_modified(|mi| {
-                    if mi != &monitor_info {
-                        *mi = monitor_info;
-                        true
-                    } else {
-                        false
-                    }
-                });
-            };
+            for (monitor_id, tx) in senders.iter() {
+                if let Some(monitor_info) = make_monitor_info(*monitor_id) {
+                    let _ = tx.send_if_modified(|mi| {
+                        if mi != &monitor_info {
+                            *mi = monitor_info;
+                            true
+                        } else {
+                            false
+                        }
+                    });
+                }
+            }
         }
     }
 
     event_listener.add_workspace_changed_handler(mk_workspace_change_handler(senders.clone()));
     event_listener.add_workspace_added_handler(mk_workspace_change_handler(senders.clone()));
     event_listener.add_workspace_deleted_handler(mk_workspace_change_handler(senders.clone()));
-    let handler = mk_workspace_change_handler(senders.clone());
-    event_listener.add_workspace_moved_handler(move |workspace_moved_event_data| {
-        handler(WorkspaceEventData {
-            name: workspace_moved_event_data.name,
-            id: workspace_moved_event_data.id,
-        })
-    });
+    event_listener.add_workspace_moved_handler(mk_workspace_change_handler(senders.clone()));
+    event_listener.add_window_opened_handler(mk_workspace_change_handler(senders.clone()));
+    event_listener.add_window_closed_handler(mk_workspace_change_handler(senders.clone()));
+    event_listener.add_window_moved_handler(mk_workspace_change_handler(senders.clone()));
 
     event_listener.start_listener().unwrap();
 }
