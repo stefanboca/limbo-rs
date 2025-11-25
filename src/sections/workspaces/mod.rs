@@ -8,75 +8,60 @@ use iced::{
 
 use crate::{
     components::section,
-    desktop_environment::{Desktop, WorkspaceId, WorkspaceInfos},
+    desktop_environment::{WorkspaceId, WorkspaceInfo},
 };
 
 mod state;
 use state::WorkspaceState;
 
 pub struct Workspaces {
-    workspaces: Vec<WorkspaceState>,
+    states: Vec<WorkspaceState>,
 }
 
 #[derive(Debug, Clone)]
 pub enum WorkspacesMessage {
     Tick,
-    WorkspacesChanged(WorkspaceInfos),
+    WorkspacesChanged(Vec<WorkspaceInfo>),
     FocusWorkspace(WorkspaceId),
     CycleWorkspace(bool),
 }
 
 impl Workspaces {
-    pub fn new(mut workspace_infos: WorkspaceInfos) -> Self {
-        workspace_infos.sort_by_key(|w| w.idx);
-        Self {
-            workspaces: workspace_infos
-                .into_iter()
-                .map(WorkspaceState::new)
-                .collect(),
-        }
+    pub fn new() -> Self {
+        Self { states: vec![] }
     }
 
-    pub fn update(&mut self, message: WorkspacesMessage, desktop: &mut Desktop) {
+    pub fn update(&mut self, message: WorkspacesMessage) {
         match message {
             WorkspacesMessage::Tick => {
-                for w in &mut self.workspaces {
+                for w in &mut self.states {
                     w.update();
                 }
             }
-            WorkspacesMessage::WorkspacesChanged(mut workspace_infos) => {
-                workspace_infos.sort_by_key(|w| w.idx);
-                let len = workspace_infos.len();
-                for (i, workspace_info) in workspace_infos.into_iter().enumerate() {
-                    if let Some(state) = self.workspaces.get_mut(i) {
-                        state.workspace_info = workspace_info;
-                    } else {
-                        self.workspaces.push(WorkspaceState::new(workspace_info));
-                    }
-                }
-                self.workspaces.truncate(len);
+            WorkspacesMessage::WorkspacesChanged(workspace_infos) => {
+                self.states = workspace_infos
+                    .into_iter()
+                    .map(|info| WorkspaceState::from_existing(&self.states, info))
+                    .collect();
             }
-            WorkspacesMessage::FocusWorkspace(workspace_id) => {
-                desktop.focus_workspace(workspace_id)
-            }
-            WorkspacesMessage::CycleWorkspace(forward) => desktop.cycle_workspace(forward),
+            _ => {}
         }
     }
 
     pub fn view(&self) -> iced::Element<'_, WorkspacesMessage> {
         let workspace_icons = self
-            .workspaces
+            .states
             .iter()
             .map(|w| {
-                let color = if w.workspace_info.has_windows || w.workspace_info.is_active {
+                let color = if w.info.has_windows || w.active {
                     Color::from_rgb8(137, 180, 250)
                 } else {
                     Color::from_rgb8(88, 91, 112)
                 };
-                let width = (w.current_width_multiplier() * 5.).floor() as u16;
+                let width = 5. + w.animation_progress * 6.;
 
                 mouse_area(
-                    container(container(text("")).padding([5, width]).style(
+                    container(container(text("")).padding([5., width]).style(
                         move |_: &iced::Theme| {
                             container::Style {
                                 background: Some(color.into()),
@@ -88,9 +73,9 @@ impl Workspaces {
                             }
                         },
                     ))
-                    .padding([8, 15 - width]),
+                    .padding([8., 15. - width]),
                 )
-                .on_press(WorkspacesMessage::FocusWorkspace(w.workspace_info.id))
+                .on_press(WorkspacesMessage::FocusWorkspace(w.id))
                 .on_scroll(|delta| {
                     let y = match delta {
                         mouse::ScrollDelta::Pixels { y, .. } => y,
@@ -113,9 +98,9 @@ impl Workspaces {
     }
 
     pub fn subscription(&self) -> Option<iced::Subscription<WorkspacesMessage>> {
-        self.workspaces
+        self.states
             .iter()
             .any(|w| w.needs_update())
-            .then(|| iced::time::every(Duration::from_millis(8)).map(|_| WorkspacesMessage::Tick))
+            .then(|| iced::time::every(Duration::from_millis(25)).map(|_| WorkspacesMessage::Tick))
     }
 }

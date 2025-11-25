@@ -1,7 +1,5 @@
-use std::collections::HashMap;
-
 use iced::{
-    Alignment, Color, Element, Length, Settings, Task, Theme,
+    Color, Element, Settings, Task, Theme,
     daemon::{Appearance, DefaultStyle},
     event::wayland::{Event as WaylandEvent, LayerEvent, OutputEvent},
     platform_specific::shell::commands::layer_surface::{destroy_layer_surface, get_layer_surface},
@@ -9,29 +7,28 @@ use iced::{
         IcedMargin, IcedOutput, SctkLayerSurfaceSettings,
     },
     theme::Palette,
-    widget::{container, row},
     window,
 };
 use sctk::{
-    output::OutputInfo,
     reexports::client::protocol::wl_output::WlOutput,
     shell::wlr_layer::{Anchor, KeyboardInteractivity, Layer},
 };
 
 use crate::{
-    components::{icon, section, side},
-    desktop_environment::{Desktop, DesktopEvent, WorkspaceInfo, WorkspaceInfos},
-    sections::{
-        clock::{Clock, ClockMessage},
-        sysmon::{Sysmon, SysmonMessage},
-        workspaces::{Workspaces, WorkspacesMessage},
-    },
+    bar::BarMessage,
+    desktop_environment::{Desktop, DesktopEvent},
+    sections::*,
+    tray::Tray,
 };
 
+mod bar;
 mod components;
 mod desktop_environment;
 mod icons;
 mod sections;
+mod tray;
+
+use bar::Bar;
 
 #[tokio::main]
 pub async fn main() -> iced::Result {
@@ -65,44 +62,26 @@ pub async fn main() -> iced::Result {
         .run_with(Limbo::new)
 }
 
-struct Bar {
-    /// window id of the bar's layer surface.
-    id: window::Id,
-    wl_output: WlOutput,
-
-    workspaces: Option<Workspaces>,
-}
-
 struct Limbo {
-    desktop: Option<Desktop>,
-    workspace_infos: WorkspaceInfos,
-
-    output_infos: HashMap<WlOutput, OutputInfo>,
     bars: Vec<Bar>,
-
-    clock: Clock,
-    sysmon: Sysmon,
+    desktop: Desktop,
+    tray: Tray,
 }
 
 #[derive(Debug, Clone)]
 pub enum Message {
-    DesktopEvent(DesktopEvent),
-    WaylandEvent(WaylandEvent),
-    Clock(ClockMessage),
-    Workspaces(window::Id, WorkspacesMessage),
-    Sysmon(SysmonMessage),
+    Desktop(DesktopEvent),
+    Wayland(WaylandEvent),
+    Bar(BarMessage),
 }
 
 impl Limbo {
     fn new() -> (Self, Task<Message>) {
         (
             Self {
-                desktop: Desktop::new(),
-                workspace_infos: Vec::new(),
-                output_infos: HashMap::new(),
                 bars: Vec::new(),
-                clock: Clock::new(),
-                sysmon: Sysmon::new(),
+                desktop: Desktop::new(),
+                tray: Tray::new(),
             },
             Task::none(),
         )
@@ -113,69 +92,49 @@ impl Limbo {
             iced::event::listen_with(|evt, _, _| {
                 if let iced::Event::PlatformSpecific(iced::event::PlatformSpecific::Wayland(evt)) =
                     evt
+                    && matches!(
+                        evt,
+                        WaylandEvent::Output(_, _) | WaylandEvent::Layer(LayerEvent::Done, _, _)
+                    )
                 {
-                    Some(Message::WaylandEvent(evt))
+                    Some(Message::Wayland(evt))
                 } else {
                     None
                 }
             }),
-            self.clock.subscription().map(Message::Clock),
-            self.sysmon.subscription().map(Message::Sysmon),
+            self.tray
+                .subscribe()
+                .map(|items| Message::Bar(BarMessage::Tray(TrayMessage::Items(items)))),
+            self.desktop.subscription().map(Message::Desktop),
         ];
-        if let Some(desktop) = &self.desktop {
-            subscriptions.push(desktop.subscription().map(Message::DesktopEvent));
-        }
-        for bar in self.bars.iter() {
-            if let Some(workspaces) = &bar.workspaces
-                && let Some(workspace_subscription) = workspaces.subscription()
-            {
-                subscriptions.push(
-                    workspace_subscription
-                        .with(bar.id)
-                        .map(|(id, msg)| Message::Workspaces(id, msg)),
-                );
-            }
-        }
+        subscriptions.extend(
+            self.bars
+                .iter()
+                .map(|bar| bar.subscription().map(Message::Bar)),
+        );
+
         iced::Subscription::batch(subscriptions)
     }
 
     fn update(&mut self, message: Message) -> Task<Message> {
         match message {
-            Message::DesktopEvent(DesktopEvent::WorkspacesChanged(workspace_infos)) => {
-                self.workspace_infos = workspace_infos.clone();
-
-                let workspace_infoss = self
-                    .bars
-                    .iter()
-                    .map(|bar| self.workspace_infos_for_output(&bar.wl_output).collect())
-                    .collect::<Vec<_>>();
-                for (bar, workspace_infos) in self.bars.iter_mut().zip(workspace_infoss) {
-                    if let Some(workspaces) = &mut bar.workspaces
-                        && let Some(desktop) = self.desktop.as_mut()
-                    {
-                        workspaces.update(
-                            WorkspacesMessage::WorkspacesChanged(workspace_infos),
-                            desktop,
-                        );
-                    }
-                }
+            Message::Desktop(DesktopEvent::WorkspacesChanged(workspace_infos)) => {
+                self.bars.iter_mut().for_each(|bar| {
+                    bar.update(BarMessage::Workspaces(
+                        WorkspacesMessage::WorkspacesChanged(workspace_infos.clone()),
+                    ))
+                });
                 Task::none()
             }
-            Message::WaylandEvent(evt) => match evt {
+            Message::Wayland(evt) => match evt {
                 WaylandEvent::Output(OutputEvent::Created(output_info), wl_output) => {
-                    if let Some(output_info) = output_info {
-                        self.output_infos.insert(wl_output.clone(), output_info);
+                    if let Some(output_name) = output_info.and_then(|o| o.name) {
+                        self.spawn_bar(wl_output, output_name)
+                    } else {
+                        Task::none()
                     }
-
-                    self.spawn_bar(wl_output)
-                }
-                WaylandEvent::Output(OutputEvent::InfoUpdate(output_info), wl_output) => {
-                    self.output_infos.insert(wl_output, output_info);
-                    Task::none()
                 }
                 WaylandEvent::Output(OutputEvent::Removed, wl_output) => {
-                    self.output_infos.remove(&wl_output);
-
                     let removed_bars = self.bars.extract_if(.., |bar| bar.wl_output == wl_output);
                     Task::batch(removed_bars.map(|bar| destroy_layer_surface(bar.id)))
                 }
@@ -185,89 +144,30 @@ impl Limbo {
                 }
                 _ => Task::none(),
             },
-            Message::Clock(msg) => {
-                self.clock.update(msg);
+            Message::Bar(BarMessage::Workspaces(WorkspacesMessage::FocusWorkspace(id))) => {
+                self.desktop.focus_workspace(id);
                 Task::none()
             }
-            Message::Workspaces(bar_id, message) => {
-                if let Some(bar) = self.bars.iter_mut().find(|b| b.id == bar_id)
-                    && let Some(workspaces) = &mut bar.workspaces
-                    && let Some(desktop) = self.desktop.as_mut()
-                {
-                    workspaces.update(message, desktop);
+            Message::Bar(BarMessage::Workspaces(WorkspacesMessage::CycleWorkspace(forward))) => {
+                self.desktop.cycle_workspace(forward);
+                Task::none()
+            }
+            Message::Bar(msg) => {
+                for bar in self.bars.iter_mut() {
+                    bar.update(msg.clone());
                 }
-                Task::none()
-            }
-            Message::Sysmon(msg) => {
-                self.sysmon.update(msg);
                 Task::none()
             }
         }
     }
 
     fn view(&self, window_id: window::Id) -> Element<'_, Message> {
-        if let Some(bar) = self.bars.iter().find(|b| b.id == window_id) {
-            self.view_bar(bar)
-        } else {
-            unreachable!("All windows are bars");
-        }
-    }
-
-    fn view_bar<'a>(&'a self, bar: &'a Bar) -> Element<'a, Message> {
-        let transparent = if let Some(bar) = self.bars.iter().find(|b| b.id == bar.id) {
-            self.workspace_infos_for_output(&bar.wl_output)
-                .find(|w| w.is_active)
-                .is_some_and(|w| w.transparent_bar)
-        } else {
-            false
-        };
-
-        let mut center = Vec::new();
-        if let Some(workspaces) = &bar.workspaces {
-            center.push(
-                workspaces
-                    .view()
-                    .map(|msg| Message::Workspaces(bar.id, msg)),
-            )
-        }
-
-        container(
-            row![
-                // Left
-                side(
-                    Alignment::Start,
-                    row![
-                        section(icon("nix-snowflake-white", None)),
-                        section(icon("nix-snowflake-white", None)),
-                        section(icon("nix-snowflake-white", None)),
-                        section(icon("nix-snowflake-white", None))
-                    ]
-                    .spacing(12)
-                ),
-                // Center
-                side(Alignment::Center, row(center).spacing(12)),
-                // Right
-                side(
-                    Alignment::End,
-                    row![
-                        self.sysmon.view().map(Message::Sysmon),
-                        self.clock.view().map(Message::Clock)
-                    ]
-                    .spacing(12)
-                ),
-            ]
-            .padding([4, 8])
-            .width(Length::Fill)
-            .height(Length::Fill),
-        )
-        .style(move |theme| {
-            if transparent {
-                iced::widget::container::transparent(theme)
-            } else {
-                iced::widget::container::background(theme.palette().background)
-            }
-        })
-        .into()
+        let bar = self
+            .bars
+            .iter()
+            .find(|b| b.id == window_id)
+            .expect("All windows are bars");
+        bar.view().map(Message::Bar)
     }
 
     fn theme(&self, _window_id: window::Id) -> Theme {
@@ -295,48 +195,19 @@ impl Limbo {
         }
     }
 
-    fn workspace_infos_for_output(
-        &self,
-        wl_output: &WlOutput,
-    ) -> impl Iterator<Item = WorkspaceInfo> {
-        let output = self
-            .output_infos
-            .get(wl_output)
-            .and_then(|oi| oi.name.as_ref());
-        self.workspace_infos
-            .iter()
-            .filter(move |wi| wi.output.as_ref() == output)
-            .cloned()
-    }
-
-    fn spawn_bar(&mut self, wl_output: WlOutput) -> Task<Message> {
+    fn spawn_bar(&mut self, wl_output: WlOutput, output_name: String) -> Task<Message> {
         let id = window::Id::unique();
-
-        let workspace_infos = self.workspace_infos_for_output(&wl_output).collect();
-        self.bars.push(Bar {
-            id,
-            wl_output: wl_output.clone(),
-            workspaces: if self.desktop.is_some() {
-                Some(Workspaces::new(workspace_infos))
-            } else {
-                None
-            },
-        });
+        self.bars.push(Bar::new(id, wl_output.clone(), output_name));
 
         get_layer_surface(SctkLayerSurfaceSettings {
             id,
             layer: Layer::Top,
             keyboard_interactivity: KeyboardInteractivity::None,
-            pointer_interactivity: true,
+            input_zone: None,
             anchor: Anchor::TOP | Anchor::LEFT | Anchor::RIGHT,
             output: IcedOutput::Output(wl_output),
             namespace: "limbo:bar".to_string(),
-            margin: IcedMargin {
-                top: 0,
-                right: 0,
-                bottom: 0,
-                left: 0,
-            },
+            margin: IcedMargin::default(),
             size: Some((None, Some(40))),
             exclusive_zone: 40,
             size_limits: iced::Limits::NONE,

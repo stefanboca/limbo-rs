@@ -2,11 +2,11 @@ use std::{collections::HashSet, sync::LazyLock, time::Duration};
 
 use iced::{
     Color,
-    widget::{row, text},
+    widget::row,
 };
 use sysinfo::{Components, CpuRefreshKind, MemoryRefreshKind, RefreshKind, System};
 
-use crate::components::{icon, section};
+use crate::components::{section, text_with_icon};
 
 #[derive(Debug)]
 pub struct Sysmon {
@@ -43,7 +43,7 @@ impl Sysmon {
     pub fn view(&self) -> iced::Element<'_, SysmonMessage> {
         let cpu_usage = self.system.global_cpu_usage();
         let ram =
-            (self.system.total_memory() - self.system.available_memory()) as f64 / 1_000_000_000.0;
+            (self.system.total_memory() - self.system.available_memory()) as f64 / 1_000_000_000.;
 
         let temperatures = self.components.list();
         static LABELS: LazyLock<HashSet<&str>> = LazyLock::new(|| {
@@ -68,21 +68,21 @@ impl Sysmon {
 
         section(
             row![
-                row![
-                    icon("cpu", Some(Color::from_rgb8(0xb4, 0xbe, 0xfe))),
-                    text(format!("{cpu_usage:.1}%"))
-                ]
-                .spacing(6),
-                row![
-                    icon("temperature", Some(Color::from_rgb8(0xf3, 0x8b, 0xa8))),
-                    text(format!("{cpu_temp:.0} °C"))
-                ]
-                .spacing(6),
-                row![
-                    icon("cpu-2", Some(Color::from_rgb8(0xf5, 0xc2, 0xe7))),
-                    text(format!("{ram:.1} GB"))
-                ]
-                .spacing(6),
+                text_with_icon(
+                    "cpu",
+                    Some(Color::from_rgb8(0xb4, 0xbe, 0xfe)),
+                    format!("{cpu_usage:.1}%")
+                ),
+                text_with_icon(
+                    "temperature",
+                    Some(Color::from_rgb8(0xf3, 0x8b, 0xa8)),
+                    format!("{cpu_temp:.0}°")
+                ),
+                text_with_icon(
+                    "cpu-2",
+                    Some(Color::from_rgb8(0xf5, 0xc2, 0xe7)),
+                    format!("{ram:.1} GB")
+                ),
             ]
             .spacing(12),
         )

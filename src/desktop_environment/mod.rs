@@ -3,6 +3,9 @@ mod hyprland_desktop;
 #[cfg(feature = "niri")]
 mod niri_desktop;
 
+#[cfg(not(any(feature = "hyprland", feature = "niri")))]
+compile_error!("No desktop environment selected");
+
 pub type WorkspaceId = i64;
 
 #[derive(Debug, Clone)]
@@ -15,11 +18,9 @@ pub struct WorkspaceInfo {
     pub transparent_bar: bool,
 }
 
-pub type WorkspaceInfos = Vec<WorkspaceInfo>;
-
 #[derive(Debug, Clone)]
 pub enum DesktopEvent {
-    WorkspacesChanged(WorkspaceInfos),
+    WorkspacesChanged(Vec<WorkspaceInfo>),
 }
 
 pub enum Desktop {
@@ -29,21 +30,21 @@ pub enum Desktop {
     Niri(niri_desktop::NiriDesktop),
 }
 impl Desktop {
-    pub fn new() -> Option<Self> {
+    pub fn new() -> Self {
         #[cfg(feature = "hyprland")]
         {
             use hyprland::shared::HyprData;
             if hyprland::data::Version::get().is_ok() {
-                return Some(Self::Hyprland(hyprland_desktop::HyprlandDesktop::new()));
+                return Self::Hyprland(hyprland_desktop::HyprlandDesktop::new());
             }
         }
 
         #[cfg(feature = "niri")]
         if let Ok(socket) = niri_ipc::socket::Socket::connect() {
-            return Some(Self::Niri(niri_desktop::NiriDesktop::new(socket)));
+            return Self::Niri(niri_desktop::NiriDesktop::new(socket));
         }
 
-        None
+        unreachable!()
     }
 
     pub fn focus_workspace(&mut self, id: WorkspaceId) {
@@ -52,8 +53,6 @@ impl Desktop {
             Desktop::Hyprland(hyprland_desktop) => hyprland_desktop.focus_workspace(id),
             #[cfg(feature = "niri")]
             Desktop::Niri(niri_desktop) => niri_desktop.focus_workspace(id),
-            #[allow(unused)]
-            _ => unreachable!(),
         }
     }
 
@@ -63,8 +62,6 @@ impl Desktop {
             Desktop::Hyprland(hyprland_desktop) => hyprland_desktop.cycle_workspace(forward),
             #[cfg(feature = "niri")]
             Desktop::Niri(niri_desktop) => niri_desktop.cycle_workspace(forward),
-            #[allow(unused)]
-            _ => unreachable!(),
         }
     }
 
@@ -74,8 +71,6 @@ impl Desktop {
             Desktop::Hyprland(hyprland_desktop) => hyprland_desktop.subscription(),
             #[cfg(feature = "niri")]
             Desktop::Niri(niri_desktop) => niri_desktop.subscription(),
-            #[allow(unused)]
-            _ => unreachable!(),
         }
     }
 }

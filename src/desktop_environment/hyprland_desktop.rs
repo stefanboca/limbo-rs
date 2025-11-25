@@ -1,5 +1,5 @@
 use hyprland::{
-    data::{Clients, Monitors, Workspaces},
+    data::{Clients, Monitors, WorkspaceRules, Workspaces},
     dispatch,
     dispatch::WorkspaceIdentifierWithSpecial,
     error::HyprError,
@@ -8,9 +8,10 @@ use hyprland::{
 };
 use iced::futures::{StreamExt, stream::once};
 
-use super::{DesktopEvent, WorkspaceId, WorkspaceInfo, WorkspaceInfos};
+use super::{DesktopEvent, WorkspaceId, WorkspaceInfo};
 
 pub struct HyprlandDesktop;
+
 impl HyprlandDesktop {
     pub fn new() -> Self {
         HyprlandDesktop
@@ -32,10 +33,10 @@ impl HyprlandDesktop {
 
     pub fn subscription(&self) -> iced::Subscription<DesktopEvent> {
         #[derive(Hash)]
-        struct NiriEvents;
+        struct HyprlandEvents;
 
         iced::Subscription::run_with_id(
-            NiriEvents,
+            HyprlandEvents,
             once(async {
                 make_workspace_infos()
                     .await
@@ -62,7 +63,7 @@ async fn process_event(event: Result<HyprEvent, HyprError>) -> Option<DesktopEve
     }
 }
 
-async fn make_workspace_infos() -> Option<WorkspaceInfos> {
+async fn make_workspace_infos() -> Option<Vec<WorkspaceInfo>> {
     let monitors = Monitors::get_async()
         .await
         .ok()?
@@ -74,22 +75,50 @@ async fn make_workspace_infos() -> Option<WorkspaceInfos> {
         .into_iter()
         .collect::<Vec<_>>();
 
+    let all_workspaces = WorkspaceRules::get_async()
+        .await
+        .ok()?
+        .into_iter()
+        .filter_map(|rule| {
+            rule.workspace_string
+                .parse::<i64>()
+                .ok()
+                .map(|id| (id, rule.monitor))
+        })
+        .collect::<Vec<_>>();
+    let workspaces = Workspaces::get_async()
+        .await
+        .ok()?
+        .into_iter()
+        .collect::<Vec<_>>();
+
     Some(
-        Workspaces::get_async()
-            .await
-            .ok()?
+        all_workspaces
             .into_iter()
-            .map(|w| WorkspaceInfo {
-                output: Some(w.monitor),
-                id: w.id as WorkspaceId,
-                idx: w.id,
-                is_active: monitors.iter().any(|m| m.active_workspace.id == w.id),
-                has_windows: w.windows > 0,
-                transparent_bar: w.windows == 0
-                    || clients
-                        .iter()
-                        .filter(|c| c.workspace.id == w.id)
-                        .all(|c| c.floating),
+            .map(|(id, output)| {
+                if let Some(w) = workspaces.iter().find(|w| (w.id as i64) == id) {
+                    WorkspaceInfo {
+                        output: Some(w.monitor.clone()),
+                        id: w.id as WorkspaceId,
+                        idx: w.id,
+                        is_active: monitors.iter().any(|m| m.active_workspace.id == w.id),
+                        has_windows: w.windows > 0,
+                        transparent_bar: w.windows == 0
+                            || clients
+                                .iter()
+                                .filter(|c| c.workspace.id == w.id)
+                                .all(|c| c.floating),
+                    }
+                } else {
+                    WorkspaceInfo {
+                        output,
+                        id,
+                        idx: id as i32,
+                        is_active: false,
+                        has_windows: false,
+                        transparent_bar: false,
+                    }
+                }
             })
             .collect(),
     )

@@ -1,5 +1,3 @@
-use std::collections::HashSet;
-
 use iced::futures::{
     StreamExt,
     stream::{once, unfold},
@@ -14,7 +12,7 @@ use tokio::{
     net::{UnixSocket, UnixStream},
 };
 
-use super::{DesktopEvent, WorkspaceId, WorkspaceInfo, WorkspaceInfos};
+use super::{DesktopEvent, WorkspaceId, WorkspaceInfo};
 
 pub struct NiriDesktop {
     socket: Socket,
@@ -115,7 +113,7 @@ async fn read_event(
     serde_json::from_str(buf).ok()
 }
 
-fn make_workspace_infos(state: &EventStreamState) -> WorkspaceInfos {
+fn make_workspace_infos(state: &EventStreamState) -> Vec<WorkspaceInfo> {
     state
         .workspaces
         .workspaces

@@ -1,20 +1,35 @@
+use std::{
+    collections::HashMap,
+    path::PathBuf,
+    sync::{LazyLock, Mutex},
+};
+
 use iced::{
-    Alignment, Border, Color, Length, Theme,
+    Alignment, Border, Color, Element, Length, Theme,
     widget::{
-        Container, container, svg,
+        Container, container, image, row, svg,
         svg::{Handle, Svg},
+        text,
     },
 };
 
 use crate::icons::{Icons, IconsFilled};
-
-mod section;
 
 pub fn side<'a, Message>(
     alignment: Alignment,
     content: impl Into<iced::Element<'a, Message>>,
 ) -> Container<'a, Message> {
     container(content).width(Length::Fill).align_x(alignment)
+}
+
+pub fn text_with_icon<'a, Message: 'a>(
+    _icon: &'a str,
+    color: Option<Color>,
+    _text: impl text::IntoFragment<'a>,
+) -> iced::Element<'a, Message> {
+    let icon = icon(_icon, color);
+    let text = text(_text);
+    row![icon, text].spacing(6).into()
 }
 
 pub fn section<'a, Message>(
@@ -33,6 +48,18 @@ pub fn section<'a, Message>(
         .padding([6, 12])
         .align_y(Alignment::Center)
         .height(Length::Fill)
+}
+
+static ICON_CACHE: LazyLock<Mutex<HashMap<String, Option<PathBuf>>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+pub fn system_icon<'a, Message>(name: &str) -> Option<Element<'a, Message>> {
+    let icon_path = ICON_CACHE
+        .lock()
+        .ok()?
+        .entry(name.to_string())
+        .or_insert_with(|| freedesktop_icons::lookup(name).with_size(48).find())
+        .clone()?;
+    Some(image(image::Handle::from_path(icon_path)).into())
 }
 
 pub fn icon(name: &'_ str, color: Option<Color>) -> Svg<'_> {
