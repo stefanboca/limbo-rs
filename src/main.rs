@@ -72,7 +72,7 @@ struct Limbo {
 pub enum Message {
     Desktop(DesktopEvent),
     Wayland(WaylandEvent),
-    Bar(BarMessage),
+    Bar(Option<window::Id>, BarMessage),
 }
 
 impl Limbo {
@@ -104,14 +104,14 @@ impl Limbo {
             }),
             self.tray
                 .subscribe()
-                .map(|items| Message::Bar(BarMessage::Tray(TrayMessage::Items(items)))),
+                .map(|items| Message::Bar(None, BarMessage::Tray(TrayMessage::Items(items)))),
             self.desktop.subscription().map(Message::Desktop),
         ];
-        subscriptions.extend(
-            self.bars
-                .iter()
-                .map(|bar| bar.subscription().map(Message::Bar)),
-        );
+        subscriptions.extend(self.bars.iter().map(|bar| {
+            bar.subscription()
+                .with(bar.id)
+                .map(|(id, bar)| Message::Bar(Some(id), bar))
+        }));
 
         iced::Subscription::batch(subscriptions)
     }
@@ -144,17 +144,23 @@ impl Limbo {
                 }
                 _ => Task::none(),
             },
-            Message::Bar(BarMessage::Workspaces(WorkspacesMessage::FocusWorkspace(id))) => {
+            Message::Bar(_, BarMessage::Workspaces(WorkspacesMessage::FocusWorkspace(id))) => {
                 self.desktop.focus_workspace(id);
                 Task::none()
             }
-            Message::Bar(BarMessage::Workspaces(WorkspacesMessage::CycleWorkspace(forward))) => {
+            Message::Bar(_, BarMessage::Workspaces(WorkspacesMessage::CycleWorkspace(forward))) => {
                 self.desktop.cycle_workspace(forward);
                 Task::none()
             }
-            Message::Bar(msg) => {
-                for bar in self.bars.iter_mut() {
-                    bar.update(msg.clone());
+            Message::Bar(id, msg) => {
+                if let Some(id) = id {
+                    if let Some(bar) = self.bars.iter_mut().find(|b| b.id == id) {
+                        bar.update(msg.clone());
+                    }
+                } else {
+                    for bar in self.bars.iter_mut() {
+                        bar.update(msg.clone());
+                    }
                 }
                 Task::none()
             }
@@ -167,7 +173,8 @@ impl Limbo {
             .iter()
             .find(|b| b.id == window_id)
             .expect("All windows are bars");
-        bar.view().map(Message::Bar)
+        bar.view()
+            .map(move |msg| Message::Bar(Some(window_id), msg))
     }
 
     fn theme(&self, _window_id: window::Id) -> Theme {
