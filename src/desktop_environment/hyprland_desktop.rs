@@ -56,7 +56,7 @@ async fn process_event(event: Result<HyprEvent, HyprError>) -> Option<DesktopEve
     match event {
         MonitorAdded(_) | MonitorRemoved(_) | WorkspaceChanged(_) | WorkspaceDeleted(_)
         | WorkspaceAdded(_) | WorkspaceMoved(_) | WindowOpened(_) | WindowClosed(_)
-        | WindowMoved(_) => make_workspace_infos()
+        | WindowMoved(_) | FloatStateChanged(_) => make_workspace_infos()
             .await
             .map(DesktopEvent::WorkspacesChanged),
         _ => None,
