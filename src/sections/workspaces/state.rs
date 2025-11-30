@@ -1,19 +1,26 @@
-use crate::desktop_environment::{WorkspaceId, WorkspaceInfo};
+use iced::Color;
+
+use crate::animation::{EasedToggle, Easing};
+use crate::desktop_environment::WorkspaceInfo;
 
 #[derive(Debug, Clone)]
 pub struct WorkspaceState {
-    pub id: WorkspaceId,
-    pub active: bool,
-    pub animation_progress: f32, // 0.0 to 1.0
     pub info: WorkspaceInfo,
+    width: EasedToggle<f32>,
+    color: EasedToggle<Color>,
 }
 
 impl From<WorkspaceInfo> for WorkspaceState {
     fn from(info: WorkspaceInfo) -> Self {
         Self {
-            id: info.id,
-            active: info.is_active,
-            animation_progress: 0.0,
+            width: EasedToggle::new(info.is_active, Easing::Linear, 100., 5.0, 11.0),
+            color: EasedToggle::new(
+                info.has_windows || info.is_active,
+                Easing::Smoothstep,
+                100.,
+                Color::from_rgb8(88, 91, 112),
+                Color::from_rgb8(137, 180, 250),
+            ),
             info,
         }
     }
@@ -21,11 +28,10 @@ impl From<WorkspaceInfo> for WorkspaceState {
 
 impl WorkspaceState {
     pub fn from_existing(states: &[WorkspaceState], info: WorkspaceInfo) -> Self {
-        if let Some(state) = states.iter().find(|s| s.id == info.id) {
+        if let Some(state) = states.iter().find(|s| s.info.id == info.id) {
             Self {
-                id: info.id,
-                active: info.is_active,
-                animation_progress: state.animation_progress,
+                width: state.width.with_target(info.is_active),
+                color: state.color.with_target(info.has_windows || info.is_active),
                 info,
             }
         } else {
@@ -34,17 +40,19 @@ impl WorkspaceState {
     }
 
     pub fn animation_running(&self) -> bool {
-        self.active && self.animation_progress < 1.0
-            || !self.active && self.animation_progress > 0.0
+        self.width.is_running() || self.color.is_running()
     }
 
     pub fn update(&mut self) {
-        const ANIMATION_SPEED: f32 = 0.25;
+        self.width.update();
+        self.color.update();
+    }
 
-        if self.active && self.animation_progress < 1.0 {
-            self.animation_progress = (self.animation_progress + ANIMATION_SPEED).min(1.0);
-        } else if !self.active && self.animation_progress > 0.0 {
-            self.animation_progress = (self.animation_progress - ANIMATION_SPEED).max(0.0);
-        }
+    pub fn width(&self) -> f32 {
+        self.width.get()
+    }
+
+    pub fn color(&self) -> Color {
+        self.color.get()
     }
 }
