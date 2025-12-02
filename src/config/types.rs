@@ -180,7 +180,6 @@ pub struct Bar {
     pub quick_settings: QuickSettings,
     pub sysmon: SysMon,
     pub todo: Todo,
-    pub twitch: Twitch,
     pub workspaces: Workspaces,
 }
 
@@ -213,7 +212,6 @@ pub enum ModuleName {
     QuickSettings,
     Sysmon,
     Todo,
-    Twitch,
     Workspaces,
 }
 
@@ -894,29 +892,6 @@ impl Default for Todo {
                 "https://todoist.b-cdn.net/assets/sounds/d8040624c9c7c88aa730f73faa60cf39.mp3"
                     .to_string(),
             icon: Icon::new("square", ColorNameOrHex::name("red")),
-        }
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Twitch {
-    pub icon: Icon,
-    pub channels: Vec<String>,
-    pub client_id: String,
-    pub client_secret: String,
-}
-
-impl Default for Twitch {
-    fn default() -> Self {
-        Self {
-            icon: Icon::new(
-                "brand-twitch",
-                ColorNameOrHex::Hex(Color::parse("#DDB6F2").unwrap()),
-            ),
-            channels: Vec::new(),
-            client_id: String::new(),
-            client_secret: String::new(),
         }
     }
 }

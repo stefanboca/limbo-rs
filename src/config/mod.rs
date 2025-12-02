@@ -16,38 +16,13 @@ pub struct Args {
     /// Override general.debug setting
     #[arg(long)]
     pub debug: Option<bool>,
-
-    /// Override general.timeFormat (12h or 24h)
-    #[arg(long)]
-    pub time_format: Option<String>,
-
-    /// Override general.unit (metric or imperial)
-    #[arg(long)]
-    pub unit: Option<String>,
-
-    /// Override general.lat
-    #[arg(long)]
-    pub lat: Option<f64>,
-
-    /// Override general.lon
-    #[arg(long)]
-    pub lon: Option<f64>,
 }
 
 impl Config {
     pub fn load() -> Result<Self, ConfigError> {
         let args = Args::parse();
         let mut builder = ConfigBuilder::builder();
-
-        // 1. Start with default values (optional)
-        let defaults = ConfigBuilder::try_from(&Config::default())?;
-        builder = builder.add_source(defaults);
-
-        // 2. Load from config files in ~/.config/limbo/
-        let config_dir = dirs::config_dir()
-            .map(|p| p.join("limbo"))
-            .or_else(|| dirs::home_dir().map(|p| p.join(".config").join("limbo")))
-            .ok_or_else(|| ConfigError::Message("Could not determine config directory".into()))?;
+        builder = builder.add_source(ConfigBuilder::try_from(&Self::default())?);
 
         // If specific config file is provided via CLI, use only that
         if let Some(config_path) = args.config {
@@ -59,6 +34,14 @@ impl Config {
                 ("config", true),        // config.{json,toml,yaml} - required
                 ("config.local", false), // config.local.{json,toml,yaml} - optional
             ];
+
+            // Load from ~/.config/limbo
+            let config_dir = dirs::config_dir()
+                .map(|p| p.join("limbo"))
+                .or_else(|| dirs::home_dir().map(|p| p.join(".config").join("limbo")))
+                .ok_or_else(|| {
+                    ConfigError::Message("Could not determine config directory".into())
+                })?;
 
             for (base_name, required) in config_files {
                 // Try each format
@@ -72,7 +55,7 @@ impl Config {
             }
         }
 
-        // 3. Load from environment variables with LIMBO_ prefix
+        // Load from environment variables with LIMBO_ prefix
         // This will parse nested values like LIMBO_GENERAL__DEBUG=true
         builder = builder.add_source(
             Environment::with_prefix("LIMBO")
@@ -80,25 +63,11 @@ impl Config {
                 .try_parsing(true), // Parse strings to appropriate types
         );
 
-        // 4. Apply command-line overrides
+        // Apply command-line overrides
         if let Some(debug) = args.debug {
             builder = builder.set_override("general.debug", debug)?;
         }
-        if let Some(time_format) = args.time_format {
-            builder = builder.set_override("general.timeFormat", time_format)?;
-        }
-        if let Some(unit) = args.unit {
-            builder = builder.set_override("general.unit", unit)?;
-        }
-        if let Some(lat) = args.lat {
-            builder = builder.set_override("general.lat", lat)?;
-        }
-        if let Some(lon) = args.lon {
-            builder = builder.set_override("general.lon", lon)?;
-        }
 
-        // Build and deserialize
-        let settings = builder.build()?;
-        settings.try_deserialize()
+        builder.build()?.try_deserialize()
     }
 }

@@ -133,10 +133,6 @@ impl Bar {
                         .config
                         .section(icon("nix-snowflake-white", None))
                         .into(),
-                    ModuleName::Twitch => self
-                        .config
-                        .section(icon("nix-snowflake-white", None))
-                        .into(),
                     ModuleName::Workspaces => self.workspaces.view(),
                 }
             }))

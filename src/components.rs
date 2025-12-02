@@ -6,6 +6,7 @@ use iced::widget::svg::{Handle, Svg};
 use iced::widget::{Container, container, image, row, svg, text};
 use iced::{Alignment, Border, Color, Element, Length, Theme};
 
+use crate::config::Config;
 use crate::icons::{Icons, IconsFilled};
 
 pub fn side<'a, Message>(
@@ -61,7 +62,7 @@ pub fn icon_filled(name: &'_ str, color: Option<Color>) -> Svg<'static> {
     .width(Length::Shrink)
 }
 
-impl crate::config::Config {
+impl Config {
     pub fn section<'a, Message>(
         &self,
         content: impl Into<iced::Element<'a, Message>>,
