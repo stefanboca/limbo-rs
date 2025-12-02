@@ -1,3 +1,5 @@
+use std::rc::Rc;
+
 use iced::daemon::{Appearance, DefaultStyle};
 use iced::event::{PlatformSpecific, wayland};
 use iced::theme::Palette;
@@ -11,6 +13,7 @@ use crate::tray::{Tray, TrayItem};
 mod animation;
 mod bar;
 mod components;
+mod config;
 mod desktop_environment;
 mod icons;
 mod message;
@@ -18,6 +21,7 @@ mod sections;
 mod tray;
 
 use bar::Bar;
+use config::Config;
 
 #[tokio::main]
 pub async fn main() -> iced::Result {
@@ -30,12 +34,15 @@ pub async fn main() -> iced::Result {
         }
     }
 
+    let config = Config::load().unwrap_or_default();
+
+    let font_name = config.theme.font.clone().leak();
     iced::daemon("limbo", Limbo::update, Limbo::view)
         .settings(Settings {
             id: Some("limbo".to_string()),
             fonts: Vec::new(),
             default_font: iced::Font {
-                family: iced::font::Family::Name("DejaVu Sans Mono"),
+                family: iced::font::Family::Name(font_name),
                 weight: iced::font::Weight::Normal,
                 stretch: iced::font::Stretch::Normal,
                 style: iced::font::Style::Normal,
@@ -48,12 +55,13 @@ pub async fn main() -> iced::Result {
         .subscription(Limbo::subscription)
         .theme(Limbo::theme)
         .style(Limbo::style)
-        .run_with(Limbo::new)
+        .run_with(move || Limbo::new(config))
 }
 
 /// Global state for use when initializing new bars.
 #[derive(Default)]
 pub struct GlobalState {
+    config: Rc<Config>,
     workspace_infos: Vec<WorkspaceInfo>,
     sysinfo: SysInfo,
     tray_items: Vec<TrayItem>,
@@ -67,10 +75,13 @@ struct Limbo {
 }
 
 impl Limbo {
-    fn new() -> (Self, Task<Message>) {
+    fn new(config: Config) -> (Self, Task<Message>) {
         (
             Self {
-                global_state: GlobalState::default(),
+                global_state: GlobalState {
+                    config: Rc::new(config),
+                    ..Default::default()
+                },
                 bars: Vec::new(),
                 desktop: Desktop::new(),
                 tray: Tray::new(),
@@ -91,7 +102,7 @@ impl Limbo {
                 }
                 _ => None,
             }),
-            Sysmon::subscription(),
+            Sysmon::subscription(&self.global_state.config),
             self.tray.subscription(),
             self.desktop.subscription(),
         ];
@@ -172,15 +183,25 @@ impl Limbo {
     }
 
     fn theme(&self, _window_id: window::Id) -> Theme {
+        let cfg = &self.global_state.config;
+        let text = cfg
+            .theme
+            .resolve_color(&cfg.bar.theme.fg)
+            .unwrap_or(Color::WHITE);
+        let background = cfg
+            .theme
+            .resolve_color(&cfg.bar.theme.bg)
+            .unwrap_or(Color::from_rgb(
+                0x1e as f32 / 255.0,
+                0x1e as f32 / 255.0,
+                0x2e as f32 / 255.0,
+            ));
+
         Theme::custom(
             "internal".to_string(),
             Palette {
-                text: Color::WHITE,
-                background: Color::from_rgb(
-                    0x1e as f32 / 255.0,
-                    0x1e as f32 / 255.0,
-                    0x2e as f32 / 255.0,
-                ),
+                text,
+                background,
                 // Unused
                 primary: Color::BLACK,
                 success: Color::BLACK,
