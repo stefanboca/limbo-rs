@@ -10,7 +10,7 @@ use sysinfo::{Components, CpuRefreshKind, MemoryRefreshKind, RefreshKind, System
 
 use crate::GlobalState;
 use crate::config::Config;
-use crate::config::types::SysMonSegment;
+use crate::config::types::SysmonSegment;
 use crate::message::Message;
 
 #[derive(Debug, Default, Clone, Copy)]
@@ -44,17 +44,17 @@ impl Sysmon {
         let cfg = &self.config.bar.sysmon;
 
         let segments = cfg.segments.iter().map(|segment| match segment {
-            SysMonSegment::Cpu => self.config.text_with_icon(
+            SysmonSegment::Cpu => self.config.text_with_icon(
                 &self.config.bar.sysmon.cpu.icon,
-                format!("{:.*}%", cfg.precision, self.info.cpu_usage),
+                format!("{:.*}%", cfg.cpu.precision, self.info.cpu_usage),
             ),
-            SysMonSegment::Temp => self.config.text_with_icon(
+            SysmonSegment::Temp => self.config.text_with_icon(
                 &self.config.bar.sysmon.temp.icon,
-                format!("{:.*}°", cfg.precision, self.info.cpu_temp),
+                format!("{:.*}°", cfg.temp.precision, self.info.cpu_temp),
             ),
-            SysMonSegment::Ram => self.config.text_with_icon(
+            SysmonSegment::Ram => self.config.text_with_icon(
                 &self.config.bar.sysmon.ram.icon,
-                format!("{:.*} GB", cfg.precision, self.info.ram),
+                format!("{:.*} GB", cfg.ram.precision, self.info.ram),
             ),
         });
 

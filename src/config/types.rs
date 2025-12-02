@@ -178,7 +178,7 @@ pub struct Bar {
     pub clock: Clock,
     pub notifications: Notifications,
     pub quick_settings: QuickSettings,
-    pub sysmon: SysMon,
+    pub sysmon: Sysmon,
     pub todo: Todo,
     pub workspaces: Workspaces,
 }
@@ -806,7 +806,7 @@ impl Default for Toggle {
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
-pub enum SysMonSegment {
+pub enum SysmonSegment {
     Cpu,
     Temp,
     Ram,
@@ -814,10 +814,9 @@ pub enum SysMonSegment {
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct SysMon {
-    pub segments: Vec<SysMonSegment>,
+pub struct Sysmon {
+    pub segments: Vec<SysmonSegment>,
     pub probe_interval_ms: u64,
-    pub precision: usize,
     pub cpu: Cpu,
     pub temp: Temp,
     pub ram: Ram,
@@ -825,12 +824,11 @@ pub struct SysMon {
     pub mouse_commands: MouseCommands,
 }
 
-impl Default for SysMon {
+impl Default for Sysmon {
     fn default() -> Self {
         Self {
-            segments: vec![SysMonSegment::Cpu, SysMonSegment::Temp, SysMonSegment::Ram],
+            segments: vec![SysmonSegment::Cpu, SysmonSegment::Temp, SysmonSegment::Ram],
             probe_interval_ms: 5000,
-            precision: 1,
             cpu: Default::default(),
             temp: Default::default(),
             ram: Default::default(),
@@ -842,12 +840,14 @@ impl Default for SysMon {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Cpu {
     pub icon: Icon,
+    pub precision: usize,
 }
 
 impl Default for Cpu {
     fn default() -> Self {
         Self {
             icon: Icon::new("cpu", ColorNameOrHex::name("lavender")),
+            precision: 1,
         }
     }
 }
@@ -855,12 +855,14 @@ impl Default for Cpu {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Temp {
     pub icon: Icon,
+    pub precision: usize,
 }
 
 impl Default for Temp {
     fn default() -> Self {
         Self {
             icon: Icon::new("temperature", ColorNameOrHex::name("red")),
+            precision: 0,
         }
     }
 }
@@ -868,12 +870,14 @@ impl Default for Temp {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Ram {
     pub icon: Icon,
+    pub precision: usize,
 }
 
 impl Default for Ram {
     fn default() -> Self {
         Self {
             icon: Icon::new("cpu-2", ColorNameOrHex::name("pink")),
+            precision: 1,
         }
     }
 }
